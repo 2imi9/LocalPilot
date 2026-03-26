@@ -19,5 +19,15 @@ AGENTS.md
 # Experimental code/artifacts
 dev/
 
-# Results file
+# Results and logs
 results.tsv
+results_*.tsv
+research_log.md
+research.log
+run.log
+
+# Web browsing artifacts
+screenshots/
+
+# Paper figures
+figures/
