@@ -454,7 +454,7 @@ HEAD_DIM = 64           # smaller heads = more heads (384/64=6)
 WINDOW_PATTERN = "L"    # full attention everywhere (SDPA ignores windows anyway)
 
 # Optimization
-TOTAL_BATCH_SIZE = 2**16 # ~65K tokens — maximize optimizer steps
+TOTAL_BATCH_SIZE = 2**15 # ~32K tokens — even more steps
 EMBEDDING_LR = 1.5      # push embedding LR higher
 UNEMBEDDING_LR = 0.008  # learning rate for lm_head (Adam) — doubled
 MATRIX_LR = 0.05        # slightly higher Muon LR for smaller model
