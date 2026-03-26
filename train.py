@@ -449,7 +449,7 @@ class MuonAdamW(torch.optim.Optimizer):
 # ---------------------------------------------------------------------------
 
 # Model architecture
-ASPECT_RATIO = 78       # 5*78=390→384 dim, 3 heads — smaller faster
+ASPECT_RATIO = 100      # 4*100=400→512 dim, 8 heads
 HEAD_DIM = 128          # larger heads, fewer of them
 WINDOW_PATTERN = "L"    # full attention everywhere (SDPA ignores windows anyway)
 
@@ -466,7 +466,7 @@ WARMDOWN_RATIO = 0.8    # even longer cooldown
 FINAL_LR_FRAC = 0.05    # smaller residual LR
 
 # Model size
-DEPTH = 5               # test middle ground between 4 and 8
+DEPTH = 4               # shallower, more width per layer
 DEVICE_BATCH_SIZE = 32   # per-device batch size (32 for 24GB VRAM, 128 for 80GB)
 
 # ---------------------------------------------------------------------------
