@@ -455,7 +455,7 @@ WINDOW_PATTERN = "L"    # full attention everywhere (SDPA ignores windows anyway
 
 # Optimization
 TOTAL_BATCH_SIZE = 2**16 # ~65K tokens — maximize optimizer steps
-EMBEDDING_LR = 1.5      # push embedding LR higher
+EMBEDDING_LR = 1.0      # moderate embedding LR
 UNEMBEDDING_LR = 0.008  # learning rate for lm_head (Adam) — doubled
 MATRIX_LR = 0.05        # slightly higher Muon LR for smaller model
 SCALAR_LR = 0.5         # learning rate for per-layer scalars (Adam)
