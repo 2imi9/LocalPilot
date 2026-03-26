@@ -449,7 +449,7 @@ class MuonAdamW(torch.optim.Optimizer):
 # ---------------------------------------------------------------------------
 
 # Model architecture
-ASPECT_RATIO = 102      # 5*102=510→512 dim, 4 heads
+ASPECT_RATIO = 78       # 5*78=390→384 dim, 3 heads — smaller faster
 HEAD_DIM = 128          # target head dimension for attention
 WINDOW_PATTERN = "L"    # full attention everywhere (SDPA ignores windows anyway)
 
