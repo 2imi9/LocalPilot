@@ -462,7 +462,7 @@ SCALAR_LR = 0.5         # learning rate for per-layer scalars (Adam)
 WEIGHT_DECAY = 0.1      # lighter weight decay
 ADAM_BETAS = (0.8, 0.95) # Adam beta1, beta2
 WARMUP_RATIO = 0.0      # fraction of time budget for LR warmup
-WARMDOWN_RATIO = 0.7    # longer cooldown — better final convergence?
+WARMDOWN_RATIO = 0.8    # even longer cooldown
 FINAL_LR_FRAC = 0.1     # keep 10% LR at end instead of decay to zero
 
 # Model size
