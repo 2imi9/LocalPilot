@@ -299,8 +299,10 @@ def generate_patches(paper_ideas: str,
     patches = []
     seen_olds = set()  # track OLD strings used in this session to avoid duplicates
 
-    # Build numbered list of actual hyperparameter lines from train.py
-    hp_lines = [l for l in hyperparams.splitlines() if re.match(r'^[A-Z_]+ = ', l)]
+    # Build numbered list of actual hyperparameter lines directly from train.py
+    # (extract_hyperparams section detection is unreliable; scan for UPPER_CASE = lines)
+    train_content = read_file("train.py")
+    hp_lines = [l for l in train_content.splitlines() if re.match(r'^[A-Z_]+ = ', l)][:20]
     hp_numbered = "\n".join(f"  {i+1}. {l}" for i, l in enumerate(hp_lines))
 
     for attempt in range(n * 3):  # allow retries
