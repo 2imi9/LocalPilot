@@ -134,19 +134,36 @@ All three phases are sequential — the models load and unload between phases, s
 
 ## Cost
 
-All compute runs on your own GPU — no cloud billing, no API tokens.
+The expensive part — training — always runs locally. The code agent is optional: use a local model (free) or an external API.
 
-| | LocalPilot (local) | Cloud H100 (Lambda) |
+### Training cost (always local)
+
+| | LocalPilot (local GPU) | Cloud H100 (Lambda) |
 |---|---|---|
-| Per experiment (~2 min) | ~$0.0007 electricity | ~$0.083 |
-| 53-experiment run | **$0.03** | ~$4.40 |
+| Per experiment (~5 min) | ~$0.0016 electricity | ~$0.207 |
+| 53-experiment run | **$0.09** | ~$11.00 |
 | Cost per 1M tokens trained | **$0.000007** | ~$0.045 |
-| **Savings** | | **~128× cheaper** |
+| **Savings** | | **~120× cheaper** |
 
-Calculated at $0.13/kWh (US average), RTX 5090 Laptop at 150W TDP, vs Lambda H100 at $2.49/hr.
-The 53 web-enhanced experiments (5.1B tokens total) cost less than a single cup of coffee in electricity.
+Calculated at $0.13/kWh (US average), RTX 5090 Laptop GPU at 150W TDP, vs Lambda H100 at $2.49/hr.
 
-> **Note:** This excludes hardware amortization. If you already own the GPU (e.g. for gaming), marginal research cost is effectively just electricity.
+### Code agent cost (per 53-experiment run)
+
+The code agent generates experiment patches — typically ~5K input + ~1K output tokens per call.
+
+| Code agent | Per experiment | 53 experiments | Notes |
+|---|---|---|---|
+| Local Devstral / Qwen (electricity) | ~$0.00 | **~$0.00** | Runs on your GPU between training phases |
+| Claude Haiku 3.5 (API) | ~$0.003 | ~$0.16 | Cheapest frontier option |
+| Claude Sonnet 3.5 (API) | ~$0.030 | ~$1.59 | High quality |
+| GPT-4o (API) | ~$0.040 | ~$2.12 | High quality |
+
+**Total for 53 experiments (training + code agent):**
+- Local models only: **~$0.09** (electricity)
+- Local training + Claude Haiku API: **~$0.25**
+- Local training + GPT-4o API: **~$2.21** — still 5× cheaper than full cloud H100
+
+> **Note:** This excludes hardware amortization. If you already own the GPU (e.g. for gaming), the marginal cost is just electricity + any API fees.
 
 ## Design choices
 
