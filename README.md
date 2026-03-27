@@ -1,4 +1,4 @@
-# autoresearch
+# LocalPilot
 
 ![teaser](progress.png)
 

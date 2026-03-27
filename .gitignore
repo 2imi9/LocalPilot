@@ -31,3 +31,24 @@ screenshots/
 
 # Paper figures
 figures/
+
+# Paper / research output (private)
+*.docx
+~$*.docx
+paper_outline.md
+LocalPilot_paper.docx
+paper.docx
+
+# Claude memory (private)
+.claude/
+
+# Large model files
+models/
+
+# Large binaries / zips
+*.zip
+*.gguf
+
+# Temp / lock files
+*.tmp
+*.lock
