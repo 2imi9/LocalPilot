@@ -1,5 +1,5 @@
 """
-LocalPilot — Hardware-Aware Model Configuration
+LocalPilot - Hardware-Aware Model Configuration
 ================================================
 Auto-detects GPU VRAM and recommends appropriate models for:
   - Web Agent  : MolmoWeb (visual arXiv browsing)
@@ -24,36 +24,36 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-# Project root: localpilot/config.py → localpilot/ → project root
+# Project root: localpilot/config.py -> localpilot/ -> project root
 ROOT = Path(__file__).resolve().parent.parent
 
-# ── Model catalog ────────────────────────────────────────────────────────────
+# -- Model catalog ------------------------------------------------------------
 
 WEB_AGENT_MODELS = {
     "MolmoWeb-4B": {
         "hf_id": "allenai/MolmoWeb-4B",
         "vram_gb": 8,
-        "description": "4B visual web agent — fits most GPUs (≥8 GB VRAM)",
+        "description": "4B visual web agent - fits most GPUs (>=8 GB VRAM)",
         "min_vram_gb": 8,
     },
     "MolmoWeb-8B": {
         "hf_id": "allenai/MolmoWeb-8B",
         "vram_gb": 18,
-        "description": "8B visual web agent — state-of-the-art, Qwen3+SigLIP2 (≥18 GB VRAM)",
+        "description": "8B visual web agent - state-of-the-art, Qwen3+SigLIP2 (>=18 GB VRAM)",
         "min_vram_gb": 18,
         "arxiv": "2601.10611",
     },
 }
 
 CODE_AGENT_MODELS = {
-    # ── Devstral variants (best for SWE tasks) ──────────────────────────────
+    # -- Devstral variants (best for SWE tasks) ------------------------------
     "Devstral-24B-Q8": {
         "hf_repo": "unsloth/Devstral-Small-2-24B-Instruct-2512-GGUF",
         "filename": "Devstral-Small-2-24B-Instruct-2512-Q8_0.gguf",
         "quant": "Q8_0",
         "vram_gb": 25.1,
         "min_vram_gb": 25,
-        "description": "Devstral 24B Q8 — maximum quality, needs 25 GB VRAM",
+        "description": "Devstral 24B Q8 - maximum quality, needs 25 GB VRAM",
         "swe_bench": 68.0,
     },
     "Devstral-24B-Q6": {
@@ -62,7 +62,7 @@ CODE_AGENT_MODELS = {
         "quant": "Q6_K",
         "vram_gb": 19.3,
         "min_vram_gb": 20,
-        "description": "Devstral 24B Q6_K — high quality, needs 20 GB VRAM",
+        "description": "Devstral 24B Q6_K - high quality, needs 20 GB VRAM",
         "swe_bench": 67.5,
     },
     "Devstral-24B-Q4": {
@@ -71,17 +71,17 @@ CODE_AGENT_MODELS = {
         "quant": "Q4_K_S",
         "vram_gb": 13.5,
         "min_vram_gb": 14,
-        "description": "Devstral 24B Q4_K_S — good quality, needs 14 GB VRAM",
+        "description": "Devstral 24B Q4_K_S - good quality, needs 14 GB VRAM",
         "swe_bench": 66.0,
     },
-    # ── Qwen-Coder (smaller, great for tight VRAM) ──────────────────────────
+    # -- Qwen-Coder (smaller, great for tight VRAM) --------------------------
     "Qwen-Coder-14B-Q6": {
         "hf_repo": "unsloth/Qwen2.5-Coder-14B-Instruct-GGUF",
         "filename": "Qwen2.5-Coder-14B-Instruct-Q6_K.gguf",
         "quant": "Q6_K",
         "vram_gb": 11.5,
         "min_vram_gb": 12,
-        "description": "Qwen2.5-Coder 14B Q6 — solid coder, needs 12 GB VRAM",
+        "description": "Qwen2.5-Coder 14B Q6 - solid coder, needs 12 GB VRAM",
         "swe_bench": 37.0,
     },
     "Qwen-Coder-14B-Q4": {
@@ -90,7 +90,7 @@ CODE_AGENT_MODELS = {
         "quant": "Q4_K_M",
         "vram_gb": 8.7,
         "min_vram_gb": 9,
-        "description": "Qwen2.5-Coder 14B Q4 — compact, needs 9 GB VRAM",
+        "description": "Qwen2.5-Coder 14B Q4 - compact, needs 9 GB VRAM",
         "swe_bench": 36.0,
     },
     "Qwen-Coder-7B-Q4": {
@@ -99,22 +99,22 @@ CODE_AGENT_MODELS = {
         "quant": "Q4_K_M",
         "vram_gb": 4.4,
         "min_vram_gb": 5,
-        "description": "Qwen2.5-Coder 7B Q4 — lightweight, needs 5 GB VRAM",
+        "description": "Qwen2.5-Coder 7B Q4 - lightweight, needs 5 GB VRAM",
         "swe_bench": 33.0,
     },
-    # ── CPU fallback ────────────────────────────────────────────────────────
+    # -- CPU fallback --------------------------------------------------------
     "Qwen-Coder-7B-CPU": {
         "hf_repo": "unsloth/Qwen2.5-Coder-7B-Instruct-GGUF",
         "filename": "Qwen2.5-Coder-7B-Instruct-Q4_K_M.gguf",
         "quant": "Q4_K_M",
         "vram_gb": 0,
         "min_vram_gb": 0,
-        "description": "Qwen2.5-Coder 7B Q4 — CPU only (slow but works anywhere)",
+        "description": "Qwen2.5-Coder 7B Q4 - CPU only (slow but works anywhere)",
         "swe_bench": 33.0,
     },
 }
 
-# ── Hardware detection ────────────────────────────────────────────────────────
+# -- Hardware detection --------------------------------------------------------
 
 def detect_vram_gb() -> float:
     """Return total VRAM in GB for the primary GPU, or 0 if no GPU."""
@@ -167,7 +167,7 @@ def recommend_code_agent(vram_gb: float) -> str:
     return "Qwen-Coder-7B-CPU"
 
 
-# ── Config dataclass ──────────────────────────────────────────────────────────
+# -- Config dataclass ----------------------------------------------------------
 
 @dataclass
 class LocalPilotConfig:
@@ -179,7 +179,7 @@ class LocalPilotConfig:
     web_agent_key: Optional[str] = None
     code_agent_key: Optional[str] = None
 
-    # Paths — anchored to project ROOT
+    # Paths - anchored to project ROOT
     models_dir: Path = field(default_factory=lambda: ROOT / "models")
     llama_server: Path = field(default_factory=lambda: ROOT.parent / "llama.cpp" / "llama-server.exe")
 
@@ -219,7 +219,7 @@ class LocalPilotConfig:
             if "gpu_layers" in data:     self.llama_gpu_layers = data["gpu_layers"]
             if "models_dir" in data:     self.models_dir = Path(data["models_dir"])
         except ImportError:
-            pass  # yaml not installed — skip
+            pass  # yaml not installed - skip
 
     @property
     def web_agent(self) -> Optional[dict]:
@@ -250,7 +250,7 @@ class LocalPilotConfig:
 
     def print_summary(self):
         print("\n" + "="*60)
-        print("  LocalPilot — Hardware Configuration")
+        print("  LocalPilot - Hardware Configuration")
         print("="*60)
         print(f"  GPU  : {self.gpu_name}")
         print(f"  VRAM : {self.vram_gb} GB")
@@ -332,7 +332,7 @@ class LocalPilotConfig:
         print()
 
 
-# ── CLI ───────────────────────────────────────────────────────────────────────
+# -- CLI -----------------------------------------------------------------------
 
 if __name__ == "__main__":
     import argparse
