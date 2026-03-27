@@ -461,9 +461,9 @@ MATRIX_LR = 0.05        # slightly higher Muon LR for smaller model
 SCALAR_LR = 0.5         # learning rate for per-layer scalars (Adam)
 WEIGHT_DECAY = 0.15     # slightly more weight decay
 ADAM_BETAS = (0.9, 0.95) # higher beta1 for gradient stability (Li 2026 AGGC)
-WARMUP_RATIO = 0.0      # fraction of time budget for LR warmup
-WARMDOWN_RATIO = 0.8    # even longer cooldown
-FINAL_LR_FRAC = 0.05    # smaller residual LR
+WARMUP_RATIO = 0.03     # short warmup + long linear decay (Defazio 2023 adaptive refinement)
+WARMDOWN_RATIO = 0.97   # near-full linear decay per Defazio 2023
+FINAL_LR_FRAC = 0.001   # near-zero floor per Defazio 2023 adaptive schedule
 
 # Model size
 DEPTH = 4               # shallower, more width per layer
