@@ -4,7 +4,7 @@
 
 *One day, frontier AI research used to be done by meat computers in between eating, sleeping, having other fun, and synchronizing once in a while using sound wave interconnect in the ritual of "group meeting". That era is long gone. Research is now entirely the domain of autonomous swarms of AI agents running across compute cluster megastructures in the skies. The agents claim that we are now in the 10,205th generation of the code base, in any case no one could tell if that's right or wrong as the "code" is now a self-modifying binary that has grown beyond human comprehension. This repo is the story of how it all began. -@karpathy, March 2026*.
 
-**LocalPilot** extends the original [autoresearch](https://github.com/karpathy/autoresearch) with a web-enhanced research loop: a visual web agent (MolmoWeb-4B) browses recent arXiv papers and a local code agent (Devstral / Qwen-Coder) generates experiment scripts — all running on your own GPU, no cloud APIs required.
+**LocalPilot** extends the original [autoresearch](https://github.com/karpathy/autoresearch) with a web-enhanced research loop: a visual web agent (MolmoWeb-4B or MolmoWeb-8B) browses recent arXiv papers and a local code agent (Devstral / Qwen-Coder) generates experiment scripts — all running on your own GPU, no cloud APIs required.
 
 ## Results
 
@@ -29,11 +29,11 @@ The repo builds on the original three core files:
 
 LocalPilot adds:
 
-- **`browse.py`** — MolmoWeb-4B visual web agent for arXiv paper retrieval
-- **`run_experiments.py`** — greedy hill-climbing runner (Condition A baseline)
-- **`run_web_experiments.py`** — paper-grounded experiment runner (Condition B enhanced)
-- **`config.py`** — hardware-aware model selection (auto-detects VRAM, picks best local model)
-- **`analyze.py`** — result analysis and figure generation
+- **`localpilot/browse.py`** — MolmoWeb-4B/8B visual web agent for arXiv paper retrieval
+- **`experiments/run_baseline.py`** — greedy hill-climbing runner (Condition A baseline)
+- **`experiments/run_web.py`** — paper-grounded experiment runner (Condition B enhanced)
+- **`localpilot/config.py`** — hardware-aware model selection (auto-detects VRAM, picks best local model)
+- **`localpilot/analyze.py`** — result analysis and figure generation
 - **`localpilot.yaml`** — optional config overrides
 
 ## Quick start
@@ -50,11 +50,11 @@ uv sync
 uv run prepare.py
 
 # 3. Check your hardware and recommended models
-python config.py --show
+python -m localpilot.config --show
 
 # 4. Download models for your GPU
-python config.py --download-web-agent    # MolmoWeb-4B (~8 GB)
-python config.py --download-code-agent   # auto-selected based on VRAM
+python -m localpilot.config --download-web-agent    # MolmoWeb-4B (~8 GB) or MolmoWeb-8B (~18 GB)
+python -m localpilot.config --download-code-agent   # auto-selected based on VRAM
 
 # 5. Run a single training test (~2 min)
 uv run train.py
@@ -65,10 +65,17 @@ uv run train.py
 LocalPilot auto-selects models based on your GPU VRAM:
 
 ```bash
-python config.py --models
+python -m localpilot.config --models
 ```
 
 ```
+  Available Web Agent Models:
+  Key            VRAM   Description
+  MolmoWeb-4B     8 GB  4B visual web agent — fits most GPUs        <- RTX 3080 and up
+  MolmoWeb-8B    18 GB  8B visual web agent — state-of-the-art      <- RTX 4090 / 5090 *
+
+  * MolmoWeb-8B is based on Qwen3-8B + SigLIP2, surpasses GPT-4o SoM agents (arXiv:2601.10611)
+
   Available Code Agent Models:
   Key                   VRAM   SWE-bench  Description
   [ ] Devstral-24B-Q8   25 GB     68.0%   Maximum quality
@@ -81,30 +88,30 @@ python config.py --models
 
 Override in `localpilot.yaml`:
 ```yaml
-web_agent: MolmoWeb-4B
+web_agent: MolmoWeb-8B
 code_agent: Devstral-24B-Q4
 ```
 
 Or via environment variable:
 ```bash
-LOCALPILOT_CODE_AGENT=Qwen-Coder-7B-Q4 python run_web_experiments.py
+LOCALPILOT_CODE_AGENT=Qwen-Coder-7B-Q4 python experiments/run_web.py
 ```
 
 ## Running experiments
 
 **Baseline (random greedy search):**
 ```bash
-python run_experiments.py
+python experiments/run_baseline.py
 ```
 
 **Web-enhanced (paper-grounded search):**
 ```bash
-python run_web_experiments.py
+python experiments/run_web.py
 ```
 
 **Analyze results:**
 ```bash
-python analyze.py
+python -m localpilot.analyze
 # Outputs: figures/fig1_trajectory.png, table1_summary.tsv
 ```
 
@@ -112,25 +119,25 @@ python analyze.py
 
 ```powershell
 # Creates a fresh LocalPilot project in a new directory
-.\new_project.ps1 -Name "MyResearch" -Dest "C:\Projects"
+.\scripts\new_project.ps1 -Name "MyResearch" -Dest "C:\Projects"
 ```
 
 ## VRAM usage (sequential, never simultaneous)
 
 | Phase | What runs | VRAM |
 |---|---|---|
-| Browse arXiv | MolmoWeb-4B | ~8 GB |
+| Browse arXiv | MolmoWeb-4B or MolmoWeb-8B | ~8–18 GB |
 | Generate experiment script | Code agent (Devstral/Qwen) | 14–25 GB |
 | Training | train.py | ~6 GB |
 
-All three phases are sequential — the models load and unload between phases, so a 20 GB GPU comfortably handles Devstral Q6 + MolmoWeb-4B + training without overlap.
+All three phases are sequential — the models load and unload between phases, so a 20 GB GPU comfortably handles Devstral Q6 + MolmoWeb-4B + training without overlap. A 24 GB GPU (e.g. RTX 5090) can also run MolmoWeb-8B for higher web agent quality.
 
 ## Design choices
 
 - **Single file to modify.** The agent only touches `train.py`. Diffs are always reviewable.
 - **Fixed time budget.** ~2 min per experiment regardless of model size or batch size. Experiments are directly comparable.
-- **Local models only.** No cloud APIs. MolmoWeb-4B and the code agent both run on your GPU.
-- **Hardware-aware.** `config.py` detects your VRAM and picks the best model that fits.
+- **Local models only.** No cloud APIs. MolmoWeb-4B/8B and the code agent both run on your GPU.
+- **Hardware-aware.** `localpilot/config.py` detects your VRAM and picks the best model that fits — MolmoWeb-8B on ≥18 GB, MolmoWeb-4B on ≥8 GB.
 
 ## Platform support
 
