@@ -8,16 +8,20 @@
 
 ## Results
 
-Comparing 78 baseline experiments vs 53 web-enhanced experiments, both starting from the same config:
+> **Status:** Proper A/B comparison in progress (`experiments/run_automated_v2.py`). Both conditions will start from the same raw config. Preliminary results below.
 
-| | Baseline | Web-Enhanced |
+**Preliminary — fine-tuning phase comparison** (both starting from val_bpb ~1.122538):
+
+| | Baseline | Web-Enhanced (pilot) |
 |---|---|---|
 | Best val_bpb | 1.122049 | **1.118972** |
-| Total improvement | −0.000489 | **−0.003566** |
-| Experiments used | 78 | **53 (−32%)** |
-| Final streak | 0/10 plateau | **0/33 plateau at better value** |
+| Total improvement from 1.122538 | −0.000489 | **−0.003566** |
+| Experiments used | 78 total | 53 total |
+| Paper-traceable improvements | 0 | **5** |
 
-Web-enhanced search achieves **7.3x more improvement** in fewer experiments. All 5 improvements are traceable to specific arXiv papers (2023–2026).
+Web-enhanced search achieves **7.3x more improvement** in the fine-tuning phase. All 5 improvements are traceable to specific arXiv papers (2023–2026).
+
+> **Note:** The baseline ran from the raw default config (val_bpb ~1.379) and spent ~27 experiments on architectural search before reaching the fine-tuning zone. The pilot enhanced condition started from the already-tuned config. The in-progress v2 run starts both from the same raw config for a fully controlled comparison.
 
 ## How it works
 
@@ -31,7 +35,8 @@ LocalPilot adds:
 
 - **`localpilot/browse.py`** — MolmoWeb-4B/8B visual web agent for arXiv paper retrieval
 - **`experiments/run_baseline.py`** — greedy hill-climbing runner (Condition A baseline)
-- **`experiments/run_web.py`** — paper-grounded experiment runner (Condition B enhanced)
+- **`experiments/run_web.py`** — paper-grounded experiment runner template (Condition B manual)
+- **`experiments/run_automated_v2.py`** — fully automated pipeline: MolmoWeb browses arXiv → Devstral generates patches → trains (Condition B v2, in progress)
 - **`localpilot/config.py`** — hardware-aware model selection (auto-detects VRAM, picks best local model)
 - **`localpilot/analyze.py`** — result analysis and figure generation
 - **`localpilot.yaml`** — optional config overrides
