@@ -1,0 +1,31 @@
+# LocalPilot — Model Configuration
+# ===================================
+# Uncomment and edit to override auto-detected defaults.
+# Run `python config.py --show` to see what's auto-selected for your GPU.
+# Run `python config.py --models` to see all available options.
+
+# ── Web Agent (arXiv visual browsing) ────────────────────────
+# Options: MolmoWeb-4B
+# Requires: 8+ GB VRAM
+#
+# web_agent: MolmoWeb-4B
+
+# ── Code Agent (experiment script generation) ────────────────
+# Options (best to smallest):
+#   Devstral-24B-Q8    → 25 GB VRAM  (68.0% SWE-bench)
+#   Devstral-24B-Q6    → 20 GB VRAM  (67.5% SWE-bench)  ← RTX 4090 / 5090
+#   Devstral-24B-Q4    → 14 GB VRAM  (66.0% SWE-bench)  ← RTX 3090 / 4080
+#   Qwen-Coder-14B-Q6  → 12 GB VRAM  (37.0% SWE-bench)  ← RTX 3080
+#   Qwen-Coder-14B-Q4  →  9 GB VRAM  (36.0% SWE-bench)
+#   Qwen-Coder-7B-Q4   →  5 GB VRAM  (33.0% SWE-bench)  ← RTX 3060
+#   Qwen-Coder-7B-CPU  →  0 GB VRAM  (33.0% SWE-bench)  ← CPU only
+#
+# code_agent: Devstral-24B-Q6
+
+# ── llama-server settings ────────────────────────────────────
+# llama_port: 8080
+# llama_ctx_size: 8192
+# gpu_layers: 99      # set to 0 for CPU-only mode
+
+# ── Custom model directory ───────────────────────────────────
+# models_dir: C:/path/to/your/models
