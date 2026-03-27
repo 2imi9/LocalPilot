@@ -190,6 +190,14 @@ def start_llama_server():
     global _llama_proc
     if _llama_proc is not None:
         return
+    # If a server is already healthy on the port, reuse it (don't spawn a second)
+    try:
+        r = requests.get(f"{LLAMA_API_BASE}/health", timeout=2)
+        if r.status_code == 200:
+            print("  [llama-server already running, reusing]")
+            return
+    except Exception:
+        pass
     print("  [Starting llama-server (Devstral Q6_K)...]")
     cmd = [
         LLAMA_SERVER_EXE,
@@ -238,7 +246,7 @@ def _call_devstral(prompt: str) -> str:
         "messages": [{"role": "user", "content": prompt}],
         "max_tokens": 300,
         "temperature": 0.4,
-        "stop": ["\n\n\n", "DESCRIPTION:", "---"],
+        "stop": ["\n\n\n"],
     }
     r = requests.post(
         f"{LLAMA_API_BASE}/v1/chat/completions",
@@ -275,7 +283,7 @@ def generate_patches(paper_ideas: str,
     """
     tried_str = "\n".join(f"- {c}" for c in tried[-30:]) or "None yet"
     patches = []
-    seen_olds = {p["old"] for p in tried}
+    seen_olds = set()  # track OLD strings used in this session to avoid duplicates
 
     for attempt in range(n * 3):  # allow retries
         if len(patches) >= n:
@@ -287,30 +295,36 @@ def generate_patches(paper_ideas: str,
             if attempt % 3 == 0 else ""
         )
 
-        prompt = f"""You are an ML engineer optimizing a small GPT language model.
+        # Extract just the numbered hyperparameter lines for clearer reference
+        hp_lines = [l for l in hyperparams.splitlines()
+                    if re.match(r'^[A-Z_]+ = ', l)]
+        hp_numbered = "\n".join(f"  [{i+1}] {l}" for i, l in enumerate(hp_lines))
 
-CURRENT HYPERPARAMETERS (train.py):
-{hyperparams}
+        prompt = f"""Task: propose ONE hyperparameter change for a GPT model training script.
 
-CURRENT BEST val_bpb: {current_best:.6f}  (lower is better)
+The ONLY valid parameter lines (pick one number to change):
+{hp_numbered}
 
-ALREADY TRIED (do NOT repeat these):
+Current best val_bpb: {current_best:.6f} (lower is better)
+
+Already tried (avoid repeating):
 {tried_str}
 
-PAPER IDEAS (from arXiv):
-{paper_ideas[:2500]}{extra}
+Relevant paper findings:
+{paper_ideas[:1500]}{extra}
 
-Suggest ONE specific change to ONE hyperparameter, inspired by the papers above.
-Rules:
-- The OLD string must exactly match a complete line in train.py above
-- Change only one value
-- Include a paper citation like [AuthorYear-tag] in the description
-- Do not repeat anything from the ALREADY TRIED list
+RULES:
+1. Pick one line from the numbered list above
+2. OLD = copy that line EXACTLY as shown (character for character, including spaces and comments)
+3. NEW = same line but with ONE value changed
+4. Cite a paper as [AuthorYear]
 
-Output ONLY this format (nothing else):
-DESCRIPTION: <what changes and why> [AuthorYear-tag]
-OLD: <exact line from train.py>
-NEW: <replacement line>"""
+Example of correct format:
+DESCRIPTION: Reduce weight decay to 0.1 per common GPT practice [Brown2020]
+OLD: WEIGHT_DECAY = 0.2      # cautious weight decay for Muon
+NEW: WEIGHT_DECAY = 0.1      # cautious weight decay for Muon
+
+Now produce ONE suggestion in that exact 3-line format:"""
 
         try:
             text = _call_devstral(prompt)
@@ -468,12 +482,13 @@ def main():
         save_queue(queue)
 
         tried.append(patch["desc"])
-        best_bpb, _ = run_experiment(
+        best_bpb, val_bpb = run_experiment(
             patch["desc"],
             [("train.py", patch["old"], patch["new"])],
             best_bpb,
         )
-        exp_count += 1
+        if val_bpb is not None:  # None = SKIP (old_str not found), don't count
+            exp_count += 1
         print(f"\n  [{exp_count}/{TARGET_EXPERIMENTS}] best={best_bpb:.6f}  queue={len(queue)}")
 
     print(f"\n{'='*60}")
