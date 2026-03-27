@@ -132,6 +132,22 @@ python -m localpilot.analyze
 
 All three phases are sequential — the models load and unload between phases, so a 20 GB GPU comfortably handles Devstral Q6 + MolmoWeb-4B + training without overlap. A 24 GB GPU (e.g. RTX 5090) can also run MolmoWeb-8B for higher web agent quality.
 
+## Cost
+
+All compute runs on your own GPU — no cloud billing, no API tokens.
+
+| | LocalPilot (local) | Cloud H100 (Lambda) |
+|---|---|---|
+| Per experiment (~2 min) | ~$0.0007 electricity | ~$0.083 |
+| 53-experiment run | **$0.03** | ~$4.40 |
+| Cost per 1M tokens trained | **$0.000007** | ~$0.045 |
+| **Savings** | | **~128× cheaper** |
+
+Calculated at $0.13/kWh (US average), RTX 5090 Laptop at 150W TDP, vs Lambda H100 at $2.49/hr.
+The 53 web-enhanced experiments (5.1B tokens total) cost less than a single cup of coffee in electricity.
+
+> **Note:** This excludes hardware amortization. If you already own the GPU (e.g. for gaming), marginal research cost is effectively just electricity.
+
 ## Design choices
 
 - **Single file to modify.** The agent only touches `train.py`. Diffs are always reviewable.
