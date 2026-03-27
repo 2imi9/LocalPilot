@@ -244,7 +244,7 @@ def _call_devstral(prompt: str) -> str:
     """Single call to Devstral via llama-server OpenAI-compat API."""
     payload = {
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 300,
+        "max_tokens": 120,
         "temperature": 0.4,
         "stop": ["\n\n\n"],
     }
@@ -257,19 +257,33 @@ def _call_devstral(prompt: str) -> str:
     return r.json()["choices"][0]["message"]["content"].strip()
 
 
-def parse_patch(text: str) -> dict | None:
-    """Parse Devstral output into {desc, old, new}."""
-    desc_m = re.search(r"DESCRIPTION:\s*(.+)", text)
-    old_m  = re.search(r"OLD:\s*(.+)",         text)
-    new_m  = re.search(r"NEW:\s*(.+)",         text)
-    if not all([desc_m, old_m, new_m]):
+def parse_patch_indexed(text: str, hp_lines: list) -> dict | None:
+    """
+    Parse Devstral's LINE/VALUE/DESC response into {desc, old, new}.
+    Devstral outputs the line index and new value; Python constructs old/new.
+    """
+    line_m = re.search(r"LINE:\s*(\d+)", text)
+    val_m  = re.search(r"VALUE:\s*(.+)", text)
+    desc_m = re.search(r"REASON:\s*(.+)", text)
+    if not all([line_m, val_m, desc_m]):
         return None
-    desc = desc_m.group(1).strip()
-    old  = old_m.group(1).strip()
-    new  = new_m.group(1).strip()
-    if old == new or not old or not new:
+    idx = int(line_m.group(1)) - 1  # 1-indexed → 0-indexed
+    if idx < 0 or idx >= len(hp_lines):
         return None
-    return {"desc": desc, "old": old, "new": new}
+    old_line = hp_lines[idx]
+    new_val  = val_m.group(1).strip()
+    desc     = desc_m.group(1).strip()
+    # Construct new line: replace the value part (everything after = up to first #)
+    # old_line looks like: NAME = value      # comment
+    eq_pos = old_line.index(" = ")
+    comment_pos = old_line.find(" # ", eq_pos)
+    if comment_pos == -1:
+        new_line = old_line[:eq_pos + 3] + new_val
+    else:
+        new_line = old_line[:eq_pos + 3] + new_val + old_line[comment_pos:]
+    if new_line == old_line:
+        return None
+    return {"desc": desc, "old": old_line, "new": new_line}
 
 
 def generate_patches(paper_ideas: str,
@@ -285,50 +299,48 @@ def generate_patches(paper_ideas: str,
     patches = []
     seen_olds = set()  # track OLD strings used in this session to avoid duplicates
 
+    # Build numbered list of actual hyperparameter lines from train.py
+    hp_lines = [l for l in hyperparams.splitlines() if re.match(r'^[A-Z_]+ = ', l)]
+    hp_numbered = "\n".join(f"  {i+1}. {l}" for i, l in enumerate(hp_lines))
+
     for attempt in range(n * 3):  # allow retries
         if len(patches) >= n:
             break
 
-        # Vary the prompt slightly to get diverse suggestions
-        extra = (
-            f"\nFocus on {'architecture' if attempt < n//3 else 'optimizer' if attempt < 2*n//3 else 'schedule'} changes."
-            if attempt % 3 == 0 else ""
-        )
+        # Vary focus to encourage diversity
+        focus = ["architecture (DEPTH, ASPECT_RATIO, HEAD_DIM)",
+                 "optimizer (ADAM_BETAS, WEIGHT_DECAY, MATRIX_LR, SCALAR_LR)",
+                 "schedule (WARMUP_RATIO, WARMDOWN_RATIO, FINAL_LR_FRAC)"][attempt % 3]
 
-        # Extract just the numbered hyperparameter lines for clearer reference
-        hp_lines = [l for l in hyperparams.splitlines()
-                    if re.match(r'^[A-Z_]+ = ', l)]
-        hp_numbered = "\n".join(f"  [{i+1}] {l}" for i, l in enumerate(hp_lines))
+        prompt = f"""You are tuning a GPT language model. Current best val_bpb={current_best:.4f} (lower=better).
 
-        prompt = f"""Task: propose ONE hyperparameter change for a GPT model training script.
-
-The ONLY valid parameter lines (pick one number to change):
+Numbered hyperparameter lines from train.py:
 {hp_numbered}
 
-Current best val_bpb: {current_best:.6f} (lower is better)
+Paper ideas:
+{paper_ideas[:1200]}
 
-Already tried (avoid repeating):
+Already tried:
 {tried_str}
 
-Relevant paper findings:
-{paper_ideas[:1500]}{extra}
+Task: Suggest changing ONE parameter (focus on {focus}).
+- Choose a line number from the list above
+- Give the new value for that parameter only (not the full line)
+- Explain why with a paper citation
 
-RULES:
-1. Pick one line from the numbered list above
-2. OLD = copy that line EXACTLY as shown (character for character, including spaces and comments)
-3. NEW = same line but with ONE value changed
-4. Cite a paper as [AuthorYear]
+Respond in EXACTLY this 3-line format:
+LINE: <number>
+VALUE: <new value>
+REASON: <brief explanation> [AuthorYear]
 
-Example of correct format:
-DESCRIPTION: Reduce weight decay to 0.1 per common GPT practice [Brown2020]
-OLD: WEIGHT_DECAY = 0.2      # cautious weight decay for Muon
-NEW: WEIGHT_DECAY = 0.1      # cautious weight decay for Muon
-
-Now produce ONE suggestion in that exact 3-line format:"""
+Example:
+LINE: 9
+VALUE: (0.9, 0.95)
+REASON: beta1=0.9 improves convergence for transformers [Karpathy2023]"""
 
         try:
             text = _call_devstral(prompt)
-            patch = parse_patch(text)
+            patch = parse_patch_indexed(text, hp_lines)
             if patch and patch["old"] not in seen_olds:
                 seen_olds.add(patch["old"])
                 patches.append(patch)
