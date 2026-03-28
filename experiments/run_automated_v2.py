@@ -389,7 +389,7 @@ def run_experiment(desc: str, changes: list, best_bpb: float):
 
     print("  Training...", end="", flush=True)
     result = subprocess.run(
-        TRAIN_CMD, capture_output=True, text=True, timeout=600,
+        TRAIN_CMD, capture_output=True, text=True, timeout=900,
         env={**os.environ, "PYTHONIOENCODING": "utf-8"},
     )
     log = result.stdout + result.stderr
