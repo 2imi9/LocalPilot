@@ -461,7 +461,7 @@ FINAL_LR_FRAC = 0.0     # final LR as fraction of initial
 
 # Model size
 DEPTH = 12 # number of transformer layers
-DEVICE_BATCH_SIZE = 32   # 128 OOMs without FA3; 32 fits in 24GB with CUDNN SDPA
+DEVICE_BATCH_SIZE = 8 # 128 OOMs without FA3; 32 fits in 24GB with CUDNN SDPA
 
 # ---------------------------------------------------------------------------
 # Setup: tokenizer, model, optimizer, dataloader
