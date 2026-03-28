@@ -15,6 +15,7 @@ from dataclasses import dataclass, asdict
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.nn.attention import SDPBackend, sdpa_kernel
 
 try:
     from kernels import get_kernel
@@ -95,12 +96,13 @@ class CausalSelfAttention(nn.Module):
         if fa3 is not None:
             y = fa3.flash_attn_func(q, k, v, causal=True, window_size=window_size)
         else:
-            # PyTorch SDPA fallback (full attention, no sliding window)
+            # PyTorch SDPA fallback: use memory-efficient backend (no O(T²) allocation)
             q_t = q.transpose(1, 2)
             k_t = k.transpose(1, 2)
             v_t = v.transpose(1, 2)
-            y = F.scaled_dot_product_attention(q_t, k_t, v_t, is_causal=True,
-                                               enable_gqa=(self.n_kv_head != self.n_head))
+            with sdpa_kernel([SDPBackend.CUDNN_ATTENTION]):
+                y = F.scaled_dot_product_attention(q_t, k_t, v_t, is_causal=True,
+                                                   enable_gqa=(self.n_kv_head != self.n_head))
             y = y.transpose(1, 2)
         y = y.contiguous().view(B, T, -1)
         y = self.c_proj(y)
@@ -459,7 +461,7 @@ FINAL_LR_FRAC = 0.0     # final LR as fraction of initial
 
 # Model size
 DEPTH = 8               # number of transformer layers
-DEVICE_BATCH_SIZE = 128  # per-device batch size (reduce if OOM)
+DEVICE_BATCH_SIZE = 32   # 128 OOMs without FA3; 32 fits in 24GB with CUDNN SDPA
 
 # ---------------------------------------------------------------------------
 # Setup: tokenizer, model, optimizer, dataloader
