@@ -9,24 +9,19 @@ os.environ["PYTORCH_ALLOC_CONF"] = "expandable_segments:True"
 os.environ["HF_HUB_DISABLE_PROGRESS_BARS"] = "1"
 
 import gc
+import math
 import time
 from dataclasses import dataclass, asdict
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.nn.attention import SDPBackend, sdpa_kernel
 
-try:
-    from kernels import get_kernel
-    cap = torch.cuda.get_device_capability()
-    # varunneal's FA3 is Hopper only, use kernels-community on non-Hopper GPUs
-    repo = "varunneal/flash-attention-3" if cap == (9, 0) else "kernels-community/flash-attn3"
-    fa3 = get_kernel(repo).flash_attn_interface
-except Exception:
-    fa3 = None  # Fall back to PyTorch SDPA
+from kernels import get_kernel
+fa3 = get_kernel('varunneal/flash-attention-3').flash_attn_interface
 
-from prepare import MAX_SEQ_LEN, TIME_BUDGET, Tokenizer, make_dataloader, evaluate_bpb
+from constants import MAX_SEQ_LEN, TIME_BUDGET
+from prepare import Tokenizer, make_dataloader, evaluate_bpb
 
 # ---------------------------------------------------------------------------
 # GPT Model
@@ -93,17 +88,7 @@ class CausalSelfAttention(nn.Module):
         q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
         q, k = norm(q), norm(k)
 
-        if fa3 is not None:
-            y = fa3.flash_attn_func(q, k, v, causal=True, window_size=window_size)
-        else:
-            # PyTorch SDPA fallback: use memory-efficient backend (no O(T²) allocation)
-            q_t = q.transpose(1, 2)
-            k_t = k.transpose(1, 2)
-            v_t = v.transpose(1, 2)
-            with sdpa_kernel([SDPBackend.CUDNN_ATTENTION]):
-                y = F.scaled_dot_product_attention(q_t, k_t, v_t, is_causal=True,
-                                                   enable_gqa=(self.n_kv_head != self.n_head))
-            y = y.transpose(1, 2)
+        y = fa3.flash_attn_func(q, k, v, causal=True, window_size=window_size)
         y = y.contiguous().view(B, T, -1)
         y = self.c_proj(y)
         return y
@@ -443,25 +428,25 @@ class MuonAdamW(torch.optim.Optimizer):
 # ---------------------------------------------------------------------------
 
 # Model architecture
-ASPECT_RATIO = 96       # model_dim = depth * ASPECT_RATIO
+ASPECT_RATIO = 64       # model_dim = depth * ASPECT_RATIO
 HEAD_DIM = 128          # target head dimension for attention
-WINDOW_PATTERN = "LLLL" # sliding window pattern: L=full, S=half context
+WINDOW_PATTERN = "SSSL" # sliding window pattern: L=full, S=half context
 
 # Optimization
-TOTAL_BATCH_SIZE = 2**17 # ~524K tokens per optimizer step
-EMBEDDING_LR = 0.5 # learning rate for token embeddings (Adam)
+TOTAL_BATCH_SIZE = 2**19 # ~524K tokens per optimizer step
+EMBEDDING_LR = 0.6      # learning rate for token embeddings (Adam)
 UNEMBEDDING_LR = 0.004  # learning rate for lm_head (Adam)
 MATRIX_LR = 0.04        # learning rate for matrix parameters (Muon)
-SCALAR_LR = 0.4         # learning rate for per-layer scalars (Adam)
+SCALAR_LR = 0.5         # learning rate for per-layer scalars (Adam)
 WEIGHT_DECAY = 0.2      # cautious weight decay for Muon
 ADAM_BETAS = (0.8, 0.95) # Adam beta1, beta2
-WARMUP_RATIO = 0.0      # fraction of time budget for LR warmup
+WARMUP_RATIO = 0.05 # fraction of time budget for LR warmup
 WARMDOWN_RATIO = 0.5    # fraction of time budget for LR warmdown
 FINAL_LR_FRAC = 0.0     # final LR as fraction of initial
 
 # Model size
-DEPTH = 4               # number of transformer layers
-DEVICE_BATCH_SIZE = 32   # 128 OOMs without FA3; 32 fits in 24GB with CUDNN SDPA
+DEPTH = 8               # number of transformer layers
+DEVICE_BATCH_SIZE = 128  # per-device batch size (reduce if OOM)
 
 # ---------------------------------------------------------------------------
 # Setup: tokenizer, model, optimizer, dataloader
