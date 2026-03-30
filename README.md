@@ -52,8 +52,6 @@ Both conditions start from the same karpathy baseline config (val_bpb ~1.268):
 | Improvements found | 7 | **11** |
 | Every change explainable | No | **Yes** |
 
-> **Note:** This benchmark has only 13 bounded hyperparameters — a deliberately constrained space where random search is known to be highly competitive. The advantage of paper-grounded search grows with search space complexity (more HPs, architecture choices, data mixing, training schedules). See [Limitations](#limitations).
-
 Example V3 proposal log:
 ```
 Experiment #17: SCALAR_LR 0.5 → 0.3
@@ -61,6 +59,20 @@ Experiment #17: SCALAR_LR 0.5 → 0.3
            improve convergence stability in shallow transformers"
   Result: val_bpb 1.1553 → 1.1507 ✓ kept
 ```
+
+### Surrogate benchmark validation (YAHPO LCBench)
+
+To validate with proper statistics, we ran both methods on [YAHPO Gym](https://github.com/slds-lmu/yahpo_gym) (LCBench: 7 HPs, neural net tuning, instant surrogate evaluations) with **500 seeds each**:
+
+![yahpo](figures/fig6_yahpo.png)
+
+| | Random search | Informed search |
+|---|---|---|
+| Median val_cross_entropy | 0.1485 | **0.1124** |
+| Improvement | — | **24% better** |
+| Seeds | 500 | 500 |
+
+With enough seeds and a larger search space, informed search clearly dominates random perturbation. The karpathy benchmark (13 bounded HPs) is deliberately constrained — see [Limitations](#limitations).
 
 ## Quick start
 
