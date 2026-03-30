@@ -1,6 +1,6 @@
 # AutoResearch — LocalPilot
 
-![teaser](progress.png)
+![teaser](figures/fig5_final.png)
 
 *One day, frontier AI research used to be done by meat computers in between eating, sleeping, having other fun, and synchronizing once in a while using sound wave interconnect in the ritual of "group meeting". That era is long gone. Research is now entirely the domain of autonomous swarms of AI agents running across compute cluster megastructures in the skies. The agents claim that we are now in the 10,205th generation of the code base, in any case no one could tell if that's right or wrong as the "code" is now a self-modifying binary that has grown beyond human comprehension. This repo is the story of how it all began. -@karpathy, March 2026*.
 
@@ -13,14 +13,14 @@
 | | Baseline (random) | Web-Enhanced (V3) |
 |---|---|---|
 | Best val_bpb | 1.1521 | **1.1507** |
-| Improvement from baseline | −0.1159 | **−0.1173** |
+| Improvement from baseline | −0.1159 | −0.1173 |
 | Experiments run | 45 | 64 |
-| Improvements kept | 7 | **11** |
-| Paper-traceable changes | 0 | **11** |
+| Improvements kept | 7 | 11 |
+| Paper-traceable changes | 0 | 11 |
 
-The web-enhanced agent finds **57% more improvements** despite running a larger search space (API-based paper discovery + relevance scoring). Every edit in the enhanced condition is traceable to a specific arXiv paper or research finding.
+**Key finding:** Random search is a strong baseline — it converges faster early on and reaches near-optimal BPB in fewer experiments. The LLM-guided agent achieves a marginally better final result (−0.0014 BPB) but takes more experiments to get there. However, compared against the *expected* random baseline (fig5), the LLM-guided run outperforms — this particular baseline run was a statistically lucky seed.
 
-Training runs via Docker (FA3 kernel requires Linux), ~5.5 min per experiment on an RTX 5090 Laptop.
+Every edit in the enhanced condition is traceable to a specific arXiv paper or research finding. Training runs via Docker (FA3 kernel requires Linux), ~5.5 min per experiment on an RTX 5090 Laptop.
 
 ## Architecture
 
