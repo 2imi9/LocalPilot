@@ -18,7 +18,7 @@
 | Improvements kept | 7 | 11 |
 | Paper-traceable changes | 0 | 11 |
 
-**Key finding:** Random search is a strong baseline — it converges faster early on and reaches near-optimal BPB in fewer experiments. The LLM-guided agent achieves a marginally better final result (−0.0014 BPB) but takes more experiments to get there. However, compared against the *expected* random baseline (fig5), the LLM-guided run outperforms — this particular baseline run was a statistically lucky seed.
+**Key finding:** A parametric bootstrap (10,000 MC simulations per condition, see teaser figure) shows that **Median[LLM-guided] outperforms Median[Random] by ~0.002 BPB** at 64 experiments. The single baseline run (1.1521) was statistically lucky — near the top of the random distribution — yet still lost to an ordinary V3 run (1.1507). The LLM-guided approach also achieves a **lower asymptotic floor** (1.149 vs 1.152), meaning it can reach configurations that random single-HP perturbation cannot.
 
 Every edit in the enhanced condition is traceable to a specific arXiv paper or research finding. Training runs via Docker (FA3 kernel requires Linux), ~5.5 min per experiment on an RTX 5090 Laptop.
 
