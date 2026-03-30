@@ -1,4 +1,4 @@
-# Python-generated files
+# Python
 __pycache__/
 *.py[oc]
 build/
@@ -8,47 +8,32 @@ wheels/
 
 # Virtual environments
 .venv
-worktrees/
-results/
-queue/
 
-# Agent prompt files (generated per-session by launchers)
+# Agent prompt files
 CLAUDE.md
 AGENTS.md
 
-# Experimental code/artifacts
-dev/
-
-# Results and logs
-results.tsv
-results_*.tsv
-research_log.md
-research.log
+# Ephemeral runtime files
 run.log
-
-# Web browsing artifacts
+patch_queue*.json
 screenshots/
 
-# Paper figures
-figures/
+# Incomplete/test results (real results are tracked)
+results_enhanced_v2.tsv
+results_enhanced_v4.tsv
+proposals_enhanced_v4.jsonl
+research_log_v4.md
 
-# Paper / research output (private)
-*.docx
-~$*.docx
-paper_outline.md
-LocalPilot_paper.docx
-paper.docx
-
-# Claude memory (private)
+# Private / large
 .claude/
-
-# Large model files
 models/
-
-# Large binaries / zips
 *.zip
 *.gguf
+*.docx
+~$*.docx
 
-# Temp / lock files
+# Temp
 *.tmp
 *.lock
+worktrees/
+dev/

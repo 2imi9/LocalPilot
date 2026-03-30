@@ -16,6 +16,7 @@ Usage:
     uv run python -m localpilot.browse ideas "topic"           # Search and list actionable ideas
 """
 
+import os
 import sys
 import re
 import time
@@ -37,7 +38,7 @@ ROOT = Path(__file__).resolve().parent.parent
 
 HEADERS = {"User-Agent": "LocalPilot/0.2 (autonomous ML research agent)"}
 TIMEOUT = 15
-MAX_BROWSE_STEPS = 15
+MAX_BROWSE_STEPS = int(os.environ.get("MOLMOWEB_MAX_STEPS", 15))
 SCREENSHOT_DIR = ROOT / "screenshots"
 VIEWPORT = {"width": 1280, "height": 800}
 

@@ -1,185 +1,193 @@
-# LocalPilot
+# AutoResearch — LocalPilot
 
 ![teaser](progress.png)
 
 *One day, frontier AI research used to be done by meat computers in between eating, sleeping, having other fun, and synchronizing once in a while using sound wave interconnect in the ritual of "group meeting". That era is long gone. Research is now entirely the domain of autonomous swarms of AI agents running across compute cluster megastructures in the skies. The agents claim that we are now in the 10,205th generation of the code base, in any case no one could tell if that's right or wrong as the "code" is now a self-modifying binary that has grown beyond human comprehension. This repo is the story of how it all began. -@karpathy, March 2026*.
 
-**LocalPilot** extends the original [autoresearch](https://github.com/karpathy/autoresearch) with a web-enhanced research loop: a visual web agent (MolmoWeb-4B or MolmoWeb-8B) browses recent arXiv papers and a local code agent (Devstral / Qwen-Coder) generates experiment scripts — all running on your own GPU, no cloud APIs required.
+**LocalPilot** extends the original [autoresearch](https://github.com/karpathy/autoresearch) with a web-enhanced research loop: a visual web agent ([MolmoWeb-4B](https://huggingface.co/allenai/MolmoWeb-4B-0225)) browses arXiv papers, a local code agent (Qwen-Coder) proposes experiments — all running on your own GPU, no cloud APIs required.
 
 ## Results
 
-> **Status:** Proper A/B comparison in progress (`experiments/run_automated_v2.py`). Both conditions will start from the same raw config. Preliminary results below.
+**Controlled A/B comparison** — both conditions start from the same karpathy baseline config (val_bpb ~1.268):
 
-**Preliminary — fine-tuning phase comparison** (both starting from val_bpb ~1.122538):
-
-| | Baseline | Web-Enhanced (pilot) |
+| | Baseline (random) | Web-Enhanced (V3) |
 |---|---|---|
-| Best val_bpb | 1.122049 | **1.118972** |
-| Total improvement from 1.122538 | −0.000489 | **−0.003566** |
-| Experiments used | 78 total | 53 total |
-| Paper-traceable improvements | 0 | **5** |
+| Best val_bpb | 1.1521 | **1.1507** |
+| Improvement from baseline | −0.1159 | **−0.1173** |
+| Experiments run | 45 | 64 |
+| Improvements kept | 7 | **11** |
+| Paper-traceable changes | 0 | **11** |
 
-Web-enhanced search achieves **7.3x more improvement** in the fine-tuning phase. All 5 improvements are traceable to specific arXiv papers (2023–2026).
+The web-enhanced agent finds **57% more improvements** despite running a larger search space (API-based paper discovery + relevance scoring). Every edit in the enhanced condition is traceable to a specific arXiv paper or research finding.
 
-> **Note:** The baseline ran from the raw default config (val_bpb ~1.379) and spent ~27 experiments on architectural search before reaching the fine-tuning zone. The pilot enhanced condition started from the already-tuned config. The in-progress v2 run starts both from the same raw config for a fully controlled comparison.
+Training runs via Docker (FA3 kernel requires Linux), ~5.5 min per experiment on an RTX 5090 Laptop.
 
-## How it works
+## Architecture
 
-The repo builds on the original three core files:
+```
+┌─────────────────────────────────────────────────────┐
+│                   Experiment Loop                    │
+│                                                     │
+│  1. Observe ── read train.py + results history      │
+│  2. Research ── Semantic Scholar + arXiv API         │
+│      │          (tiered: score → skip/summary/deep)  │
+│      └── high relevance → MolmoWeb deep-read        │
+│  3. Propose ── Qwen-Coder: PARAM + exact VALUE      │
+│  4. Edit   ── clamp to bounds, apply to train.py    │
+│  5. Train  ── Docker container (FA3 + CUDA)         │
+│  6. Evaluate ── keep if val_bpb improves, else revert│
+│  7. Log    ── append to results TSV + research log   │
+└─────────────────────────────────────────────────────┘
+```
 
-- **`prepare.py`** — one-time data prep (downloads FineWeb, trains BPE tokenizer)
-- **`train.py`** — the single file the agent edits (model, optimizer, training loop)
-- **`program.md`** — agent instructions
-
-LocalPilot adds:
-
-- **`localpilot/browse.py`** — MolmoWeb-4B/8B visual web agent for arXiv paper retrieval
-- **`experiments/run_baseline.py`** — greedy hill-climbing runner (Condition A baseline)
-- **`experiments/run_web.py`** — paper-grounded experiment runner template (Condition B manual)
-- **`experiments/run_automated_v2.py`** — fully automated pipeline: MolmoWeb browses arXiv → Devstral generates patches → trains (Condition B v2, in progress)
-- **`localpilot/config.py`** — hardware-aware model selection (auto-detects VRAM, picks best local model)
-- **`localpilot/analyze.py`** — result analysis and figure generation
-- **`localpilot.yaml`** — optional config overrides
+**Tiered research** (V3/V4): API-first discovery with Semantic Scholar and arXiv, then Qwen scores each paper's relevance (0–10). Low-scoring papers are skipped; medium papers get a summary; only high-relevance papers trigger a MolmoWeb visual deep-read. This avoids the rate-limiting/bans caused by raw web scraping.
 
 ## Quick start
 
-**Requirements:** Single NVIDIA GPU (8+ GB VRAM), Python 3.10+, [uv](https://docs.astral.sh/uv/)
+**Requirements:** Single NVIDIA GPU (8+ GB VRAM), Python 3.10+, [uv](https://docs.astral.sh/uv/), Docker (for training)
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/2imi9/LocalPilot.git
-cd LocalPilot
+git clone https://github.com/2imi9/autoresearch.git
+cd autoresearch
 uv sync
 
 # 2. Download data and tokenizer (one-time, ~2 min)
 uv run prepare.py
 
-# 3. Check your hardware and recommended models
-python -m localpilot.config --show
+# 3. Build the Docker training image (one-time, ~5 min)
+docker build -t autoresearch-train .
 
-# 4. Download models for your GPU
-python -m localpilot.config --download-web-agent    # MolmoWeb-4B (~8 GB) or MolmoWeb-8B (~18 GB)
-python -m localpilot.config --download-code-agent   # auto-selected based on VRAM
+# 4. Run a single training test
+docker run --rm --gpus all -v "$(pwd):/workspace" autoresearch-train
 
-# 5. Run a single training test (~2 min)
-uv run train.py
+# 5. Run experiments
+python experiments/run_baseline_v2.py      # Condition A: random perturbation
+python experiments/run_enhanced_v3.py      # Condition B: web-enhanced research
+python run_both.py                         # Both conditions in sequence
 ```
 
-## Choosing your models
+## File structure
+
+```
+autoresearch/
+├── train.py              # The single file the agent edits (model + optimizer + training loop)
+├── prepare.py            # One-time data prep (FineWeb download, BPE tokenizer)
+├── constants.py          # Shared constants (HP bounds, model params)
+├── Dockerfile            # CUDA 13.0 + FA3 kernel training image
+├── run_both.py           # Convenience script to run both conditions
+│
+├── experiments/
+│   ├── run_baseline_v2.py    # Condition A: random HP perturbation
+│   ├── run_enhanced_v3.py    # Condition B: API research + MolmoWeb + Qwen proposals
+│   └── run_enhanced_v4.py    # Condition C (WIP): open parameter values + OOM pre-flight
+│
+├── localpilot/
+│   ├── browse.py             # MolmoWeb visual web agent (screenshot-based browsing)
+│   ├── config.py             # Hardware-aware model selection (auto-detects VRAM)
+│   └── analyze.py            # Result analysis and figure generation
+│
+├── results_baseline_v2.tsv       # Baseline experiment log (45 experiments)
+├── results_enhanced_v3.tsv       # Enhanced experiment log (64 experiments)
+├── proposals_baseline_v2.jsonl   # Baseline proposals with full context
+├── proposals_enhanced_v3.jsonl   # Enhanced proposals with research context
+│
+├── figures/                  # Publication figures (convergence, scatter, VRAM, etc.)
+├── paper/                    # LaTeX paper source
+└── tests/                    # Unit tests for V4 components
+```
+
+## Parameter space
+
+The agent searches over these hyperparameters in `train.py`:
+
+| Parameter | Type | Bounds | Default |
+|---|---|---|---|
+| DEPTH | discrete | {4, 6, 8, 10, 12} | 4 |
+| WIDTH | discrete | {256, 512, 768, 1024} | 512 |
+| NUM_HEADS | discrete | {4, 8, 12, 16} | 8 |
+| HEAD_DIM | discrete | {32, 64, 128} | 128 |
+| TOTAL_BATCH_SIZE | discrete | {2^15 … 2^21} | 2^19 |
+| SCALAR_LR | continuous | [0.001, 2.0] | 0.5 |
+| MATRIX_LR | continuous | [0.001, 0.1] | 0.025 |
+| EMBEDDING_LR | continuous | [0.01, 5.0] | 0.6 |
+| UNEMBEDDING_LR | continuous | [0.01, 5.0] | 1.2 |
+| WARMUP_RATIO | continuous | [0.0, 0.5] | 0.0 |
+| WARMDOWN_RATIO | continuous | [0.0, 1.0] | 0.5 |
+| WINDOW_PATTERN | continuous | [32, 1024] | 128 |
+| ADAM_BETAS | tuple | ([0.5,0.99], [0.8,0.999]) | (0.8, 0.95) |
+
+## Docker training
+
+The FA3 (Flash Attention 3) kernel only has Linux CUDA builds, so training runs inside Docker:
+
+```bash
+# Build once
+docker build -t autoresearch-train .
+
+# Run a single experiment
+docker run --rm --gpus all \
+  -v "$(pwd):/workspace" \
+  autoresearch-train
+
+# The experiment runners call Docker automatically
+```
+
+The image pre-caches the FA3 kernel at build time so experiments start instantly.
+
+## Choosing models
 
 LocalPilot auto-selects models based on your GPU VRAM:
 
+| Model | VRAM | Role |
+|---|---|---|
+| MolmoWeb-4B | ~8 GB | Visual web agent (arXiv deep-read) |
+| MolmoWeb-8B | ~18 GB | Higher quality web agent |
+| Qwen-Coder-14B | ~12 GB | Code agent (experiment proposals) |
+| Devstral-24B | ~20 GB | Higher quality code agent |
+
+All models run locally via llama-server (GGUF format). Override in `localpilot.yaml` or via environment variables:
+
 ```bash
-python -m localpilot.config --models
+LOCALPILOT_CODE_AGENT=Qwen-Coder-7B-Q4 python experiments/run_enhanced_v3.py
 ```
 
-```
-  Available Web Agent Models:
-  Key            VRAM   Description
-  MolmoWeb-4B     8 GB  4B visual web agent — fits most GPUs        <- RTX 3080 and up
-  MolmoWeb-8B    18 GB  8B visual web agent — state-of-the-art      <- RTX 4090 / 5090 *
+## VRAM usage
 
-  * MolmoWeb-8B is based on Qwen3-8B + SigLIP2, surpasses GPT-4o SoM agents (arXiv:2601.10611)
-
-  Available Code Agent Models:
-  Key                   VRAM   SWE-bench  Description
-  [ ] Devstral-24B-Q8   25 GB     68.0%   Maximum quality
-  [Y] Devstral-24B-Q6   20 GB     67.5%   High quality          <- RTX 4090 / 5090
-  [Y] Devstral-24B-Q4   14 GB     66.0%   Good quality          <- RTX 3090 / 4080
-  [Y] Qwen-Coder-14B-Q6 12 GB     37.0%   Solid coder           <- RTX 3080
-  [Y] Qwen-Coder-7B-Q4   5 GB     33.0%   Lightweight           <- RTX 3060
-  [Y] Qwen-Coder-7B-CPU  0 GB     33.0%   CPU only (any machine)
-```
-
-Override in `localpilot.yaml`:
-```yaml
-web_agent: MolmoWeb-8B
-code_agent: Devstral-24B-Q4
-```
-
-Or via environment variable:
-```bash
-LOCALPILOT_CODE_AGENT=Qwen-Coder-7B-Q4 python experiments/run_web.py
-```
-
-## Running experiments
-
-**Baseline (random greedy search):**
-```bash
-python experiments/run_baseline.py
-```
-
-**Web-enhanced (paper-grounded search):**
-```bash
-python experiments/run_web.py
-```
-
-**Analyze results:**
-```bash
-python -m localpilot.analyze
-# Outputs: figures/fig1_trajectory.png, table1_summary.tsv
-```
-
-## Starting a new project
-
-```powershell
-# Creates a fresh LocalPilot project in a new directory
-.\scripts\new_project.ps1 -Name "MyResearch" -Dest "C:\Projects"
-```
-
-## VRAM usage (sequential, never simultaneous)
+All phases are sequential — models load/unload between phases:
 
 | Phase | What runs | VRAM |
 |---|---|---|
-| Browse arXiv | MolmoWeb-4B or MolmoWeb-8B | ~8–18 GB |
-| Generate experiment script | Code agent (Devstral/Qwen) | 14–25 GB |
-| Training | train.py | ~6 GB |
+| Research (browse) | MolmoWeb-4B or 8B | ~8–18 GB |
+| Propose (code) | Qwen-Coder or Devstral | 12–25 GB |
+| Train | train.py via Docker | ~6–12 GB |
 
-All three phases are sequential — the models load and unload between phases, so a 20 GB GPU comfortably handles Devstral Q6 + MolmoWeb-4B + training without overlap. A 24 GB GPU (e.g. RTX 5090) can also run MolmoWeb-8B for higher web agent quality.
+A 20+ GB GPU comfortably handles the full pipeline.
 
 ## Cost
 
-The expensive part — training — always runs locally. The code agent is optional: use a local model (free) or an external API.
-
-### Training cost (always local)
-
-| | LocalPilot (local GPU) | Cloud H100 (Lambda) |
+| | Per experiment (~5.5 min) | 64-experiment run |
 |---|---|---|
-| Per experiment (~5 min) | ~$0.0016 electricity | ~$0.207 |
-| 53-experiment run | **$0.09** | ~$11.00 |
-| Cost per 1M tokens trained | **$0.000007** | ~$0.045 |
-| **Savings** | | **~120× cheaper** |
+| Local GPU (electricity) | ~$0.002 | **~$0.10** |
+| Cloud H100 (Lambda, $2.49/hr) | ~$0.23 | ~$14.70 |
+| **Savings** | | **~150x cheaper** |
 
-Calculated at $0.13/kWh (US average), RTX 5090 Laptop GPU at 150W TDP, vs Lambda H100 at $2.49/hr.
-
-### Code agent cost (per 53-experiment run)
-
-The code agent generates experiment patches — typically ~5K input + ~1K output tokens per call.
-
-| Code agent | Per experiment | 53 experiments | Notes |
-|---|---|---|---|
-| Local Devstral / Qwen (electricity) | ~$0.00 | **~$0.00** | Runs on your GPU between training phases |
-| Claude Haiku 3.5 (API) | ~$0.003 | ~$0.16 | Cheapest frontier option |
-| Claude Sonnet 3.5 (API) | ~$0.030 | ~$1.59 | High quality |
-| GPT-4o (API) | ~$0.040 | ~$2.12 | High quality |
-
-**Total for 53 experiments (training + code agent):**
-- Local models only: **~$0.09** (electricity)
-- Local training + Claude Haiku API: **~$0.25**
-- Local training + GPT-4o API: **~$2.21** — still 5× cheaper than full cloud H100
-
-> **Note:** This excludes hardware amortization. If you already own the GPU (e.g. for gaming), the marginal cost is just electricity + any API fees.
+Calculated at $0.13/kWh (US average), RTX 5090 Laptop GPU at 150W TDP.
 
 ## Design choices
 
 - **Single file to modify.** The agent only touches `train.py`. Diffs are always reviewable.
-- **Fixed time budget.** ~2 min per experiment regardless of model size or batch size. Experiments are directly comparable.
-- **Local models only.** No cloud APIs. MolmoWeb-4B/8B and the code agent both run on your GPU.
-- **Hardware-aware.** `localpilot/config.py` detects your VRAM and picks the best model that fits — MolmoWeb-8B on ≥18 GB, MolmoWeb-4B on ≥8 GB.
+- **Fixed time budget.** ~5.5 min per experiment regardless of config. Results are directly comparable.
+- **Local models only.** No cloud APIs. MolmoWeb and the code agent both run on your GPU.
+- **Tiered research.** API discovery first, visual browsing only for high-relevance papers — avoids rate limits.
+- **Docker training.** FA3 kernel works cross-platform via containerized Linux environment.
+- **OOM pre-flight.** (V4) Blocks dangerous HP combinations before wasting a training run.
 
 ## Platform support
 
-Requires a single NVIDIA GPU. For other platforms see the [original autoresearch forks](https://github.com/karpathy/autoresearch#notable-forks).
+Requires a single NVIDIA GPU with Docker. Training runs in Linux containers; the experiment orchestrator runs on Windows or Linux.
+
+For other platforms see the [original autoresearch forks](https://github.com/karpathy/autoresearch#notable-forks).
 
 ## License
 
