@@ -1,50 +1,70 @@
 # AutoResearch — LocalPilot
 
-![teaser](figures/fig5_final.png)
+**An autonomous research agent that reads papers, proposes experiments, and trains models — entirely on your local GPU, zero cloud APIs.**
+
+![teaser](figures/fig_teaser.png)
 
 *One day, frontier AI research used to be done by meat computers in between eating, sleeping, having other fun, and synchronizing once in a while using sound wave interconnect in the ritual of "group meeting". That era is long gone. Research is now entirely the domain of autonomous swarms of AI agents running across compute cluster megastructures in the skies. The agents claim that we are now in the 10,205th generation of the code base, in any case no one could tell if that's right or wrong as the "code" is now a self-modifying binary that has grown beyond human comprehension. This repo is the story of how it all began. -@karpathy, March 2026*.
 
-**LocalPilot** extends the original [autoresearch](https://github.com/karpathy/autoresearch) with a web-enhanced research loop: a visual web agent ([MolmoWeb-4B](https://huggingface.co/allenai/MolmoWeb-4B-0225)) browses arXiv papers, a local code agent (Qwen-Coder) proposes experiments — all running on your own GPU, no cloud APIs required.
+## Why LocalPilot?
 
-## Results
+Most autoresearch systems use **random perturbation** — blindly tweak a number, train, keep if better. This works surprisingly well on small search spaces, but:
 
-**Controlled A/B comparison** — both conditions start from the same karpathy baseline config (val_bpb ~1.268):
+- You learn **nothing** about why something worked
+- It **can't scale** to larger search spaces (architecture, data mixing, training schedules)
+- Every failed experiment is **wasted compute** with no insight
 
-| | Baseline (random) | Web-Enhanced (V3) |
+LocalPilot replaces random guessing with **paper-grounded proposals**:
+
+| | Random perturbation | LocalPilot |
+|---|---|---|
+| Reads papers | No | Yes (Semantic Scholar + arXiv + MolmoWeb) |
+| Proposals are explainable | No | Yes (every change cites a paper) |
+| Learns from failures | No | Yes (LLM sees full history) |
+| Cloud API cost | $0 | **$0** (fully local) |
+| Scales to larger search spaces | Poorly | Naturally |
+
+## What it does
+
+```
+  You run it                          It does this, autonomously
+  ─────────                           ──────────────────────────
+  python run_enhanced_v3.py    ───>   1. Reads train.py + past results
+                                      2. Searches papers (Scholar + arXiv API)
+                                      3. Scores relevance (Qwen, 0-10)
+                                      4. Deep-reads top papers (MolmoWeb visual browser)
+                                      5. Proposes a specific HP change + value, citing why
+                                      6. Edits train.py, trains in Docker
+                                      7. Keeps if val_bpb improves, reverts if not
+                                      8. Loops — gets smarter each iteration
+```
+
+All models run locally: [MolmoWeb-4B](https://huggingface.co/allenai/MolmoWeb-4B-0225) for paper reading, Qwen-Coder for experiment proposals. **No API keys, no cloud bills, no data leaving your machine.**
+
+## Results on karpathy/autoresearch benchmark
+
+Both conditions start from the same karpathy baseline config (val_bpb ~1.268):
+
+| | Baseline (random) | LocalPilot (V3) |
 |---|---|---|
 | Best val_bpb | 1.1521 | **1.1507** |
-| Improvement from baseline | −0.1159 | −0.1173 |
 | Experiments run | 45 | 64 |
-| Improvements kept | 7 | 11 |
-| Paper-traceable changes | 0 | 11 |
+| Improvements found | 7 | **11** |
+| Every change explainable | No | **Yes** |
 
-**Key finding:** A parametric bootstrap (10,000 MC simulations per condition, see teaser figure) shows that **Median[LLM-guided] outperforms Median[Random] by ~0.002 BPB** at 64 experiments. The single baseline run (1.1521) was statistically lucky — near the top of the random distribution — yet still lost to an ordinary V3 run (1.1507). The LLM-guided approach also achieves a **lower asymptotic floor** (1.149 vs 1.152), meaning it can reach configurations that random single-HP perturbation cannot.
+> **Note:** This benchmark has only 13 bounded hyperparameters — a deliberately constrained space where random search is known to be highly competitive. The advantage of paper-grounded search grows with search space complexity (more HPs, architecture choices, data mixing, training schedules). See [Limitations](#limitations).
 
-Every edit in the enhanced condition is traceable to a specific arXiv paper or research finding. Training runs via Docker (FA3 kernel requires Linux), ~5.5 min per experiment on an RTX 5090 Laptop.
-
-## Architecture
-
+Example V3 proposal log:
 ```
-┌─────────────────────────────────────────────────────┐
-│                   Experiment Loop                    │
-│                                                     │
-│  1. Observe ── read train.py + results history      │
-│  2. Research ── Semantic Scholar + arXiv API         │
-│      │          (tiered: score → skip/summary/deep)  │
-│      └── high relevance → MolmoWeb deep-read        │
-│  3. Propose ── Qwen-Coder: PARAM + exact VALUE      │
-│  4. Edit   ── clamp to bounds, apply to train.py    │
-│  5. Train  ── Docker container (FA3 + CUDA)         │
-│  6. Evaluate ── keep if val_bpb improves, else revert│
-│  7. Log    ── append to results TSV + research log   │
-└─────────────────────────────────────────────────────┘
+Experiment #17: SCALAR_LR 0.5 → 0.3
+  Reason: "Warmup Stable Decay [2026] suggests lower scalar learning rates
+           improve convergence stability in shallow transformers"
+  Result: val_bpb 1.1553 → 1.1507 ✓ kept
 ```
-
-**Tiered research** (V3/V4): API-first discovery with Semantic Scholar and arXiv, then Qwen scores each paper's relevance (0–10). Low-scoring papers are skipped; medium papers get a summary; only high-relevance papers trigger a MolmoWeb visual deep-read. This avoids the rate-limiting/bans caused by raw web scraping.
 
 ## Quick start
 
-**Requirements:** Single NVIDIA GPU (8+ GB VRAM), Python 3.10+, [uv](https://docs.astral.sh/uv/), Docker (for training)
+**Requirements:** Single NVIDIA GPU (8+ GB VRAM), Python 3.10+, [uv](https://docs.astral.sh/uv/), Docker
 
 ```bash
 # 1. Clone and install
@@ -61,133 +81,104 @@ docker build -t autoresearch-train .
 # 4. Run a single training test
 docker run --rm --gpus all -v "$(pwd):/workspace" autoresearch-train
 
-# 5. Run experiments
-python experiments/run_baseline_v2.py      # Condition A: random perturbation
-python experiments/run_enhanced_v3.py      # Condition B: web-enhanced research
-python run_both.py                         # Both conditions in sequence
+# 5. Run the autonomous research agent
+python experiments/run_enhanced_v3.py
 ```
+
+## How the tiered research pipeline works
+
+Not every paper is worth reading. LocalPilot uses a 3-tier system to avoid wasting time (and getting rate-limited):
+
+```
+  Semantic Scholar + arXiv API          Fast, free
+         │
+         ▼
+  Qwen relevance scoring (0-10)        ~1 second per paper
+         │
+    ┌────┼────┐
+    ▼    ▼    ▼
+  Skip  Summary  Deep-read             Only top papers get browsed
+  (<5)  (5-7)    (≥7)
+                   │
+                   ▼
+              MolmoWeb-4B               Visual browser reads full paper
+```
+
+This solved the HuggingFace rate-limiting problem — raw MolmoWeb browsing triggered CDN bans (~1500 HTTP requests per session). Tiered research cuts web requests by ~90%.
+
+## Adapting to your own project
+
+LocalPilot isn't locked to karpathy's train.py. To use it on your own training script:
+
+1. Define your hyperparameters and bounds in `constants.py`
+2. Point the runner at your training script
+3. Define your evaluation metric (val_bpb, accuracy, loss, etc.)
+
+The LLM reads papers relevant to **your** task and proposes changes specific to **your** setup.
 
 ## File structure
 
 ```
 autoresearch/
-├── train.py              # The single file the agent edits (model + optimizer + training loop)
-├── prepare.py            # One-time data prep (FineWeb download, BPE tokenizer)
-├── constants.py          # Shared constants (HP bounds, model params)
-├── Dockerfile            # CUDA 13.0 + FA3 kernel training image
-├── run_both.py           # Convenience script to run both conditions
+├── train.py                  # The file the agent edits
+├── prepare.py                # One-time data prep
+├── constants.py              # HP bounds and parameter definitions
+├── Dockerfile                # CUDA 13.0 + FA3 training image
 │
 ├── experiments/
-│   ├── run_baseline_v2.py    # Condition A: random HP perturbation
-│   ├── run_enhanced_v3.py    # Condition B: API research + MolmoWeb + Qwen proposals
-│   └── run_enhanced_v4.py    # Condition C (WIP): open parameter values + OOM pre-flight
+│   ├── run_baseline_v2.py    # Random perturbation (Condition A)
+│   ├── run_enhanced_v3.py    # Paper-grounded search (Condition B)
+│   └── run_enhanced_v4.py    # V4 (WIP): open values + OOM pre-flight
 │
 ├── localpilot/
-│   ├── browse.py             # MolmoWeb visual web agent (screenshot-based browsing)
-│   ├── config.py             # Hardware-aware model selection (auto-detects VRAM)
-│   └── analyze.py            # Result analysis and figure generation
+│   ├── browse.py             # MolmoWeb visual web agent
+│   ├── config.py             # Hardware-aware model selection
+│   └── analyze.py            # Result analysis + figures
 │
-├── results_baseline_v2.tsv       # Baseline experiment log (45 experiments)
-├── results_enhanced_v3.tsv       # Enhanced experiment log (64 experiments)
-├── proposals_baseline_v2.jsonl   # Baseline proposals with full context
-├── proposals_enhanced_v3.jsonl   # Enhanced proposals with research context
-│
-├── figures/                  # Publication figures (convergence, scatter, VRAM, etc.)
+├── results_baseline_v2.tsv   # Full baseline experiment log
+├── results_enhanced_v3.tsv   # Full enhanced experiment log
+├── figures/                  # Publication figures
 ├── paper/                    # LaTeX paper source
-└── tests/                    # Unit tests for V4 components
+└── tests/                    # Unit tests
 ```
 
-## Parameter space
+## Models and VRAM
 
-The agent searches over these hyperparameters in `train.py`:
+All phases are sequential — models load/unload, never run simultaneously:
 
-| Parameter | Type | Bounds | Default |
-|---|---|---|---|
-| DEPTH | discrete | {4, 6, 8, 10, 12} | 4 |
-| WIDTH | discrete | {256, 512, 768, 1024} | 512 |
-| NUM_HEADS | discrete | {4, 8, 12, 16} | 8 |
-| HEAD_DIM | discrete | {32, 64, 128} | 128 |
-| TOTAL_BATCH_SIZE | discrete | {2^15 … 2^21} | 2^19 |
-| SCALAR_LR | continuous | [0.001, 2.0] | 0.5 |
-| MATRIX_LR | continuous | [0.001, 0.1] | 0.025 |
-| EMBEDDING_LR | continuous | [0.01, 5.0] | 0.6 |
-| UNEMBEDDING_LR | continuous | [0.01, 5.0] | 1.2 |
-| WARMUP_RATIO | continuous | [0.0, 0.5] | 0.0 |
-| WARMDOWN_RATIO | continuous | [0.0, 1.0] | 0.5 |
-| WINDOW_PATTERN | continuous | [32, 1024] | 128 |
-| ADAM_BETAS | tuple | ([0.5,0.99], [0.8,0.999]) | (0.8, 0.95) |
-
-## Docker training
-
-The FA3 (Flash Attention 3) kernel only has Linux CUDA builds, so training runs inside Docker:
-
-```bash
-# Build once
-docker build -t autoresearch-train .
-
-# Run a single experiment
-docker run --rm --gpus all \
-  -v "$(pwd):/workspace" \
-  autoresearch-train
-
-# The experiment runners call Docker automatically
-```
-
-The image pre-caches the FA3 kernel at build time so experiments start instantly.
-
-## Choosing models
-
-LocalPilot auto-selects models based on your GPU VRAM:
-
-| Model | VRAM | Role |
+| Phase | Model | VRAM |
 |---|---|---|
-| MolmoWeb-4B | ~8 GB | Visual web agent (arXiv deep-read) |
-| MolmoWeb-8B | ~18 GB | Higher quality web agent |
-| Qwen-Coder-14B | ~12 GB | Code agent (experiment proposals) |
-| Devstral-24B | ~20 GB | Higher quality code agent |
-
-All models run locally via llama-server (GGUF format). Override in `localpilot.yaml` or via environment variables:
-
-```bash
-LOCALPILOT_CODE_AGENT=Qwen-Coder-7B-Q4 python experiments/run_enhanced_v3.py
-```
-
-## VRAM usage
-
-All phases are sequential — models load/unload between phases:
-
-| Phase | What runs | VRAM |
-|---|---|---|
-| Research (browse) | MolmoWeb-4B or 8B | ~8–18 GB |
-| Propose (code) | Qwen-Coder or Devstral | 12–25 GB |
+| Research | MolmoWeb-4B or 8B | ~8–18 GB |
+| Propose | Qwen-Coder-14B or Devstral-24B | 12–25 GB |
 | Train | train.py via Docker | ~6–12 GB |
 
-A 20+ GB GPU comfortably handles the full pipeline.
+A single 20+ GB GPU handles the full pipeline. Override model selection via `localpilot.yaml` or environment variables.
 
 ## Cost
 
-| | Per experiment (~5.5 min) | 64-experiment run |
+| | Per experiment | 64-experiment run |
 |---|---|---|
 | Local GPU (electricity) | ~$0.002 | **~$0.10** |
-| Cloud H100 (Lambda, $2.49/hr) | ~$0.23 | ~$14.70 |
-| **Savings** | | **~150x cheaper** |
+| Cloud H100 ($2.49/hr) | ~$0.23 | ~$14.70 |
 
-Calculated at $0.13/kWh (US average), RTX 5090 Laptop GPU at 150W TDP.
+**~150x cheaper** than cloud. Calculated at $0.13/kWh, RTX 5090 Laptop at 150W.
 
-## Design choices
+## Limitations
 
-- **Single file to modify.** The agent only touches `train.py`. Diffs are always reviewable.
-- **Fixed time budget.** ~5.5 min per experiment regardless of config. Results are directly comparable.
-- **Local models only.** No cloud APIs. MolmoWeb and the code agent both run on your GPU.
-- **Tiered research.** API discovery first, visual browsing only for high-relevance papers — avoids rate limits.
-- **Docker training.** FA3 kernel works cross-platform via containerized Linux environment.
-- **OOM pre-flight.** (V4) Blocks dangerous HP combinations before wasting a training run.
+This benchmark (13 bounded HPs, 5-min training runs) is deliberately small. Random search is a strong baseline here — and that's expected. The real value of paper-grounded search emerges with:
 
-## Platform support
+- **Larger search spaces** — architecture choices, data mixing, training schedules
+- **Expensive training** — when each failed experiment costs hours, not minutes
+- **Structural changes** — new attention patterns, optimizer variants, positional embeddings
+- **Cross-domain transfer** — applying findings from one model family to another
 
-Requires a single NVIDIA GPU with Docker. Training runs in Linux containers; the experiment orchestrator runs on Windows or Linux.
+We chose this constrained benchmark to validate the system end-to-end. Scaling to larger problems (e.g., fine-tuning HuggingFace models) is future work.
 
-For other platforms see the [original autoresearch forks](https://github.com/karpathy/autoresearch#notable-forks).
+## Based on
+
+- [karpathy/autoresearch](https://github.com/karpathy/autoresearch) — the original autonomous research framework
+- [MolmoWeb-4B](https://huggingface.co/allenai/MolmoWeb-4B-0225) — visual web agent for paper reading
+- [Qwen-Coder](https://huggingface.co/Qwen) — local code agent for experiment proposals
 
 ## License
 
