@@ -1,6 +1,6 @@
 # AutoResearch — LocalPilot
 
-**An autonomous research agent that reads papers, proposes experiments, and trains models — entirely on your local GPU, zero cloud APIs.**
+**An autonomous research agent that reads papers, proposes experiments, and trains models — use your gaming laptop/PC to run AI research at minimum cost, zero cloud APIs.**
 
 ![teaser](figures/fig_teaser.png)
 
@@ -41,18 +41,12 @@ LocalPilot replaces random guessing with **paper-grounded proposals**:
 
 All models run locally: [MolmoWeb-4B](https://huggingface.co/allenai/MolmoWeb-4B-0225) for paper reading, Qwen-Coder for experiment proposals. **No API keys, no cloud bills, no data leaving your machine.**
 
-## Results on karpathy/autoresearch benchmark
+## Results
 
-Both conditions start from the same karpathy baseline config (val_bpb ~1.268):
+### karpathy/autoresearch benchmark
 
-| | Baseline (random) | LocalPilot (V3) |
-|---|---|---|
-| Best val_bpb | 1.1521 | **1.1507** |
-| Experiments run | 45 | 64 |
-| Improvements found | 7 | **11** |
-| Every change explainable | No | **Yes** |
+Starting from the karpathy baseline config (val_bpb ~1.268), LocalPilot found **11 paper-traceable improvements** reaching **1.1507 BPB** in 64 experiments:
 
-Example V3 proposal log:
 ```
 Experiment #17: SCALAR_LR 0.5 → 0.3
   Reason: "Warmup Stable Decay [2026] suggests lower scalar learning rates
