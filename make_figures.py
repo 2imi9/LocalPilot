@@ -489,9 +489,12 @@ def fig5_vs_expected():
     # of the observed acceptance pattern under the power-law model.
     # We grid-search BPB_floor, then fit alpha/beta by binned regression.
     best_final = min(r["bpb"] for r in base if r["status"] == "keep")
-    best_enh_final = min(r["bpb"] for r in enh if r["status"] == "keep")
-    # Floor must be below both final bests
-    BPB_FLOOR = min(best_final, best_enh_final) - 0.003  # ~1.1477
+    # Floor estimated from where baseline stalled: 15 consecutive failures
+    # after 1.1521, suggesting the effective random search floor is ~1.152.
+    # We set floor slightly below baseline best to allow the model some
+    # residual improvement probability, but above V3's best (1.1507) to
+    # reflect that random single-HP perturbation cannot reach V3's level.
+    BPB_FLOOR = best_final - 0.0005  # ~1.1516
 
     gap_0 = START_BPB - BPB_FLOOR
 
