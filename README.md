@@ -1,6 +1,6 @@
 # AutoResearch — LocalPilot
 
-**An autonomous research agent that reads papers, proposes experiments, and trains models — use your gaming laptop/PC to run AI research at minimum cost, zero cloud APIs.**
+**An autonomous research agent that visually browses arXiv papers, reasons about what to try, and trains models — every experiment cites a paper, every improvement is explainable.**
 
 ![teaser](figures/fig_teaser.png)
 
@@ -8,38 +8,36 @@
 
 ## Why LocalPilot?
 
-Most autoresearch systems use **random perturbation** — blindly tweak a number, train, keep if better. This works surprisingly well on small search spaces, but:
+Most autoresearch systems use **random perturbation** — blindly tweak a number, train, keep if better. This works, but you learn nothing about *why* something worked, and every failed experiment is wasted compute with no insight.
 
-- You learn **nothing** about why something worked
-- It **can't scale** to larger search spaces (architecture, data mixing, training schedules)
-- Every failed experiment is **wasted compute** with no insight
-
-LocalPilot replaces random guessing with **paper-grounded proposals**:
+LocalPilot is different: it has a **visual web browsing agent** ([MolmoWeb-4B](https://huggingface.co/allenai/MolmoWeb-4B-0225)) that reads real arXiv papers — not just titles or abstracts, but full figures, tables, and methods sections — then reasons about what to try next.
 
 | | Random perturbation | LocalPilot |
 |---|---|---|
-| Reads papers | No | Yes (Semantic Scholar + arXiv + MolmoWeb) |
-| Proposals are explainable | No | Yes (every change cites a paper) |
-| Learns from failures | No | Yes (LLM sees full history) |
-| Cloud API cost | $0 | **$0** (fully local) |
+| Browses papers | No | Yes — MolmoWeb visually reads full PDFs |
+| Searches literature | No | Yes — arXiv via visual browsing |
+| Proposals are explainable | No | Yes — every change cites a paper |
+| Learns from failures | No | Yes — LLM sees full history |
 | Scales to larger search spaces | Poorly | Naturally |
+| Runs fully local | Yes | Yes — no cloud APIs needed |
 
 ## What it does
 
 ```
-  You run it                          It does this, autonomously
-  ─────────                           ──────────────────────────
-  uv run python run_enhanced_v3.py ─>   1. Reads train.py + past results
-                                      2. Searches papers (Scholar + arXiv API)
-                                      3. Scores relevance (Qwen, 0-10)
-                                      4. Deep-reads top papers (MolmoWeb visual browser)
-                                      5. Proposes a specific HP change + value, citing why
-                                      6. Edits train.py, trains in Docker
-                                      7. Keeps if val_bpb improves, reverts if not
-                                      8. Loops — gets smarter each iteration
+  You run it                                   It does this, autonomously
+  ─────────                                    ──────────────────────────
+  uv run python experiments/run_enhanced_v3.py ─>  1. Reads train.py + past results
+                                                 2. Qwen3.5-9B plans what to search
+                                                 3. MolmoWeb-4B browses arXiv visually
+                                                 4. Devstral-24B proposes a HP change, citing why
+                                                 5. Edits train.py, trains locally
+                                                 6. Keeps if val_bpb improves, reverts if not
+                                                 7. Loops — gets smarter each iteration
 ```
 
-All models run locally: [MolmoWeb-4B](https://huggingface.co/allenai/MolmoWeb-4B-0225) for paper reading, Qwen-Coder for experiment proposals. **No API keys, no cloud bills, no data leaving your machine.**
+The key innovation is **step 3**: MolmoWeb-4B is a visual web agent that takes screenshots of web pages and interacts with them like a human would. It navigates to arXiv papers, scrolls through figures and tables, and extracts specific techniques — not just keyword matches from abstracts.
+
+All models run locally (Qwen3.5-9B for orchestration, MolmoWeb-4B for browsing, Devstral-24B for code). No API keys, no cloud bills.
 
 ## Results
 
@@ -48,10 +46,10 @@ All models run locally: [MolmoWeb-4B](https://huggingface.co/allenai/MolmoWeb-4B
 Starting from the karpathy baseline config (val_bpb ~1.268), LocalPilot found **11 paper-traceable improvements** reaching **1.1507 BPB** in 64 experiments:
 
 ```
-Experiment #17: SCALAR_LR 0.5 → 0.3
-  Reason: "Warmup Stable Decay [2026] suggests lower scalar learning rates
-           improve convergence stability in shallow transformers"
-  Result: val_bpb 1.1553 → 1.1507 ✓ kept
+Experiment #50: WINDOW_PATTERN "SL" → "L"
+  Reason: "Switching to full-context pattern mitigates instabilities in
+           small-scale proxies where limited context exacerbates noise"
+  Result: val_bpb 1.1510 → 1.1507 ✓ kept
 ```
 
 ### Surrogate benchmark validation (YAHPO LCBench)
@@ -70,50 +68,145 @@ With enough seeds and a larger search space, informed search clearly dominates r
 
 ## Quick start
 
-**Requirements:** Single NVIDIA GPU (8+ GB VRAM), Python 3.11+, [uv](https://docs.astral.sh/uv/), Docker, [llama.cpp](https://github.com/ggerganov/llama.cpp) (built with CUDA)
+**Requirements:** Windows with NVIDIA GPU (24+ GB VRAM for default models, or 12+ GB with Q4 quants — see `localpilot.yaml`), Python 3.11+, [uv](https://docs.astral.sh/uv/), Git, CMake, CUDA toolkit, Docker (optional, for FA3 training)
+
+> **Note:** Currently tested on Windows. Linux/macOS support is planned — the main blockers are hardcoded `.exe` paths in the runner scripts.
+
+### Step 1: Clone and install
 
 ```bash
-# 1. Clone and install
 git clone https://github.com/2imi9/autoresearch.git
 cd autoresearch
 uv sync
+```
 
-# 2. Download data and tokenizer (one-time, ~2 min)
-uv run prepare.py
+### Step 2: Download training data
 
-# 3. Build llama.cpp (for local LLM inference)
+```bash
+uv run python prepare.py
+```
+
+This downloads FineWeb-Edu shards and trains a BPE tokenizer (~2 min, cached in `~/.cache/autoresearch/`).
+
+### Step 3: Build llama.cpp
+
+The research agent uses [llama.cpp](https://github.com/ggerganov/llama.cpp) to run local LLMs. Build it as a sibling directory:
+
+```bash
 cd ..
 git clone https://github.com/ggerganov/llama.cpp
 cd llama.cpp
 cmake -B build -DGGML_CUDA=ON
 cmake --build build --config Release
+```
+
+After building, copy (or symlink) the server binary to the repo root:
+
+```bash
+# Windows (adjust path if your build config differs)
+copy build\bin\Release\llama-server.exe llama-server.exe
+
+# The runner expects it at: ../llama.cpp/llama-server.exe
+# (i.e., autoresearch/ and llama.cpp/ are sibling directories)
+```
+
+```bash
 cd ../autoresearch
+```
 
-# 4. Download GGUF models
-#    Qwen3.5-9B (code agent):
-#      Place at ../models/qwen3.5-9b/Qwen3.5-9B-Q6_K.gguf
-#    MolmoWeb-4B (web agent):
-#      Place at ../models/ (see localpilot/config.py for paths)
+### Step 4: Download GGUF models
 
-# 5. Build the Docker training image (one-time, ~5 min)
-docker build -t autoresearch-train .
+Create a `models/` directory next to `autoresearch/` and download these GGUF files:
 
-# 6. Run a single training test
-docker run --rm --gpus all -v "$(pwd):/workspace" autoresearch-train
+```bash
+# Create model directories (from autoresearch/ parent)
+cd ..
+mkdir -p models/qwen3.5-9b models/devstral
 
-# 7. Run the autonomous research agent
+# Qwen3.5-9B — code/orchestration agent (~6 GB)
+# Download from: https://huggingface.co/unsloth/Qwen3.5-9B-GGUF
+huggingface-cli download unsloth/Qwen3.5-9B-GGUF Qwen3.5-9B-Q6_K.gguf --local-dir models/qwen3.5-9b
+
+# Devstral-24B — experiment proposal agent (~19 GB)
+# Download from: https://huggingface.co/unsloth/Devstral-Small-2-24B-Instruct-2512-GGUF
+huggingface-cli download unsloth/Devstral-Small-2-24B-Instruct-2512-GGUF Devstral-Small-2-24B-Instruct-2512-Q6_K.gguf --local-dir models/devstral
+
+cd autoresearch
+```
+
+MolmoWeb-4B (the visual web agent) must also be pre-downloaded. Use `huggingface-cli download allenai/MolmoWeb-4B-0225 --local-dir models/MolmoWeb-4B` or download via HuggingFace transformers' `from_pretrained()` caching before running offline.
+
+**Expected directory layout after setup:**
+```
+parent/
+├── autoresearch/       # this repo
+├── llama.cpp/          # built with CUDA, llama-server.exe at root
+└── models/
+    ├── qwen3.5-9b/
+    │   └── Qwen3.5-9B-Q6_K.gguf
+    ├── devstral/
+    │   └── Devstral-Small-2-24B-Instruct-2512-Q6_K.gguf
+    └── MolmoWeb-4B/    # visual web agent (pre-download required)
+```
+
+### Step 5: Set up the Python environment
+
+The runner scripts expect a local `.venv` created by `uv`. If `uv sync` (Step 1) completed successfully, this is already done. Verify:
+
+```bash
+# Should print the Python path inside .venv
+python -c "import sys; print(sys.executable)"
+```
+
+> **Optional:** A Dockerfile is included for running training inside a Linux container (useful for Flash Attention 3 which requires Linux CUDA). Build with `docker build -t autoresearch-train .` if needed.
+
+### Step 6: Run it
+
+```bash
+# Run the autonomous research agent (reads papers, proposes experiments)
 uv run python experiments/run_enhanced_v3.py
 
-# Or run the random baseline for comparison
+# Or run the random baseline for comparison (no LLMs needed)
 uv run python experiments/run_baseline_v2.py
 ```
 
-## How the tiered research pipeline works
+The enhanced runner will pre-flight check that all models exist and print download commands if anything is missing.
 
-Not every paper is worth reading. LocalPilot uses a 3-tier system to avoid wasting time (and getting rate-limited):
+### Troubleshooting
+
+| Problem | Fix |
+|---|---|
+| `FileNotFoundError: llama-server.exe` | Copy the built binary to `../llama.cpp/llama-server.exe` (see Step 3) |
+| `FileNotFoundError: ...Q6_K.gguf` | Download the GGUF model files (see Step 4) |
+| `uv sync` fails on torch | Ensure CUDA toolkit is installed; `uv sync` pulls PyTorch with CUDA 13.0 |
+| Docker build fails (optional) | Ensure Docker Desktop has WSL2 backend + GPU access enabled |
+| Out of VRAM | Edit `localpilot.yaml` to select smaller model variants (Q4 instead of Q6) |
+
+## How the research pipeline works
+
+### V3 (current)
+
+Qwen3.5-9B orchestrates the loop — it decides what to search, MolmoWeb-4B browses arXiv visually, and Devstral-24B writes the code patch:
 
 ```
-  Semantic Scholar + arXiv API          Fast, free
+  Qwen3.5-9B orchestrator               Plans search direction from history
+         │
+         ▼
+  MolmoWeb-4B visual browser             Browses arXiv, takes screenshots,
+                                         reads figures/tables/methods
+         │
+         ▼
+  Devstral-24B code agent                Writes train.py patch citing papers
+```
+
+**Why visual browsing matters:** API-only approaches see titles and abstracts. MolmoWeb sees the actual paper — training curves, architecture diagrams, ablation tables. It can tell the difference between a paper that *mentions* learning rate scheduling and one that *demonstrates* a specific schedule that works for shallow transformers.
+
+### V4 (WIP): tiered pipeline
+
+V4 adds Semantic Scholar + arXiv API search with relevance scoring, so only the most relevant papers get expensive visual browsing:
+
+```
+  Semantic Scholar + arXiv API          Fast, free, ~50 papers/query
          │
          ▼
   Qwen relevance scoring (0-10)        ~1 second per paper
@@ -124,10 +217,11 @@ Not every paper is worth reading. LocalPilot uses a 3-tier system to avoid wasti
   (<5)  (5-7)    (≥7)
                    │
                    ▼
-              MolmoWeb-4B               Visual browser reads full paper
+              MolmoWeb-4B               Takes screenshots, clicks through
+                                        figures/tables, extracts techniques
 ```
 
-This solved the HuggingFace rate-limiting problem — raw MolmoWeb browsing triggered CDN bans (~1500 HTTP requests per session). Tiered research cuts web requests by ~90%.
+This solves the rate-limiting problem — raw MolmoWeb browsing triggered CDN bans (~1500 HTTP requests per session). Tiered research cuts web requests by ~90%.
 
 ## Adapting to your own project
 
@@ -172,10 +266,10 @@ All phases are sequential — models load/unload, never run simultaneously:
 | Phase | Model | VRAM |
 |---|---|---|
 | Research | MolmoWeb-4B or 8B | ~8–18 GB |
-| Propose | Qwen-Coder-14B or Devstral-24B | 12–25 GB |
-| Train | train.py via Docker | ~6–12 GB |
+| Orchestrate + Propose | Qwen3.5-9B + Devstral-24B | 8–25 GB |
+| Train | train.py (local or Docker) | ~6–12 GB |
 
-A single 20+ GB GPU handles the full pipeline. Override model selection via `localpilot.yaml` or environment variables.
+A single 24+ GB GPU handles the full pipeline with default Q6 models (or 12+ GB with Q4 quants). Override model selection via `localpilot.yaml` or environment variables.
 
 ## Cost
 
@@ -201,7 +295,8 @@ We chose this constrained benchmark to validate the system end-to-end. Scaling t
 
 - [karpathy/autoresearch](https://github.com/karpathy/autoresearch) — the original autonomous research framework
 - [MolmoWeb-4B](https://huggingface.co/allenai/MolmoWeb-4B-0225) — visual web agent for paper reading
-- [Qwen-Coder](https://huggingface.co/Qwen) — local code agent for experiment proposals
+- [Qwen3.5-9B](https://huggingface.co/Qwen) — local orchestrator for search planning
+- [Devstral-24B](https://huggingface.co/mistralai) — local code agent for experiment proposals
 
 ## License
 
