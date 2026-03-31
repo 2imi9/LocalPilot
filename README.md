@@ -29,7 +29,7 @@ LocalPilot replaces random guessing with **paper-grounded proposals**:
 ```
   You run it                          It does this, autonomously
   ─────────                           ──────────────────────────
-  python run_enhanced_v3.py    ───>   1. Reads train.py + past results
+  uv run python run_enhanced_v3.py ─>   1. Reads train.py + past results
                                       2. Searches papers (Scholar + arXiv API)
                                       3. Scores relevance (Qwen, 0-10)
                                       4. Deep-reads top papers (MolmoWeb visual browser)
@@ -70,7 +70,7 @@ With enough seeds and a larger search space, informed search clearly dominates r
 
 ## Quick start
 
-**Requirements:** Single NVIDIA GPU (8+ GB VRAM), Python 3.10+, [uv](https://docs.astral.sh/uv/), Docker
+**Requirements:** Single NVIDIA GPU (8+ GB VRAM), Python 3.11+, [uv](https://docs.astral.sh/uv/), Docker, [llama.cpp](https://github.com/ggerganov/llama.cpp) (built with CUDA)
 
 ```bash
 # 1. Clone and install
@@ -81,14 +81,31 @@ uv sync
 # 2. Download data and tokenizer (one-time, ~2 min)
 uv run prepare.py
 
-# 3. Build the Docker training image (one-time, ~5 min)
+# 3. Build llama.cpp (for local LLM inference)
+cd ..
+git clone https://github.com/ggerganov/llama.cpp
+cd llama.cpp
+cmake -B build -DGGML_CUDA=ON
+cmake --build build --config Release
+cd ../autoresearch
+
+# 4. Download GGUF models
+#    Qwen3.5-9B (code agent):
+#      Place at ../models/qwen3.5-9b/Qwen3.5-9B-Q6_K.gguf
+#    MolmoWeb-4B (web agent):
+#      Place at ../models/ (see localpilot/config.py for paths)
+
+# 5. Build the Docker training image (one-time, ~5 min)
 docker build -t autoresearch-train .
 
-# 4. Run a single training test
+# 6. Run a single training test
 docker run --rm --gpus all -v "$(pwd):/workspace" autoresearch-train
 
-# 5. Run the autonomous research agent
-python experiments/run_enhanced_v3.py
+# 7. Run the autonomous research agent
+uv run python experiments/run_enhanced_v3.py
+
+# Or run the random baseline for comparison
+uv run python experiments/run_baseline_v2.py
 ```
 
 ## How the tiered research pipeline works
