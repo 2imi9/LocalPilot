@@ -282,22 +282,33 @@ A single 24+ GB GPU handles the full pipeline with default Q6 models (or 12+ GB 
 
 ## Limitations
 
-This benchmark (13 bounded HPs, 5-min training runs) is deliberately small. Random search is a strong baseline here — and that's expected. The real value of paper-grounded search emerges with:
+**Benchmark scope:** The karpathy benchmark (13 bounded HPs, 5-min training runs) is a single run (n=1). We don't yet have multi-seed variance measurements for the full agent pipeline, so we can't claim statistical significance on this benchmark alone.
+
+**YAHPO validation:** The surrogate benchmark (500 seeds, 24% improvement) validates that *informed search beats random search in principle* — but it uses a simulated informed strategy on a different task (LCBench), not our actual MolmoWeb + Qwen + Devstral pipeline. It's evidence for the approach, not a direct measurement of our system.
+
+**Paper citations:** The LLM generates references to justify its proposals (e.g., "[Smith2026]"). These citations reflect the LLM's training data, not verified literature lookups — though MolmoWeb does browse real papers during the search phase.
+
+The real value of paper-grounded search emerges with:
 
 - **Larger search spaces** — architecture choices, data mixing, training schedules
 - **Expensive training** — when each failed experiment costs hours, not minutes
 - **Structural changes** — new attention patterns, optimizer variants, positional embeddings
-- **Cross-domain transfer** — applying findings from one model family to another
 
-We chose this constrained benchmark to validate the system end-to-end. Scaling to larger problems (e.g., fine-tuning HuggingFace models) is future work.
+We chose this constrained benchmark to validate the system end-to-end. More rigorous multi-seed evaluation and larger-scale benchmarks are future work.
 
 ## Contributing / Future work
 
-- **Unbounded parameter search** — V4 allows free values (still clamped to safe bounds). Next step: let the LLM propose entirely new parameters or architectural changes
+Good first issues for contributors:
+
+- **Linux/macOS support** — remove hardcoded `.exe` paths in runner scripts (straightforward)
+- **More benchmarks** — try it on fine-tuning, RLHF, or vision models and share results
+
+Bigger research directions:
+
+- **Unbounded parameter search** — V4 allows free values (still clamped to safe bounds). Next step: let the LLM propose entirely new parameters or architectural changes beyond the predefined search space
 - **Multi-objective optimization** — optimize for speed + quality, not just val_bpb
-- **Linux/macOS support** — remove hardcoded `.exe` paths in runner scripts
-- **More benchmarks** — fine-tuning, RLHF, vision models
 - **Smarter paper selection** — V4's tiered pipeline (Scholar + arXiv + relevance scoring) needs testing and tuning
+- **Multi-seed evaluation** — run more seeds on the karpathy benchmark to measure variance
 
 PRs welcome. If you try it on your own training setup, open an issue — we'd love to hear what works.
 
