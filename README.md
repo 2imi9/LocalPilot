@@ -240,6 +240,7 @@ autoresearch/
 ├── train.py                  # The file the agent edits
 ├── prepare.py                # One-time data prep
 ├── constants.py              # HP bounds and parameter definitions
+├── make_figures.py           # Generates all figures from result data
 ├── Dockerfile                # CUDA 13.0 + FA3 training image
 │
 ├── experiments/
@@ -252,10 +253,10 @@ autoresearch/
 │   ├── config.py             # Hardware-aware model selection
 │   └── analyze.py            # Result analysis + figures
 │
-├── results_baseline_v2.tsv   # Full baseline experiment log
-├── results_enhanced_v3.tsv   # Full enhanced experiment log
+├── results_baseline_v2.tsv   # Full baseline experiment log (45 experiments)
+├── results_enhanced_v3.tsv   # Full enhanced experiment log (64 experiments)
 ├── figures/                  # Publication figures
-└── tests/                    # Unit tests
+└── tests/                    # Unit + integration tests
 ```
 
 ## Models and VRAM
