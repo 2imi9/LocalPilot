@@ -255,7 +255,6 @@ autoresearch/
 ├── results_baseline_v2.tsv   # Full baseline experiment log
 ├── results_enhanced_v3.tsv   # Full enhanced experiment log
 ├── figures/                  # Publication figures
-├── paper/                    # LaTeX paper source
 └── tests/                    # Unit tests
 ```
 
