@@ -291,6 +291,16 @@ This benchmark (13 bounded HPs, 5-min training runs) is deliberately small. Rand
 
 We chose this constrained benchmark to validate the system end-to-end. Scaling to larger problems (e.g., fine-tuning HuggingFace models) is future work.
 
+## Contributing / Future work
+
+- **Unbounded parameter search** — V4 allows free values (still clamped to safe bounds). Next step: let the LLM propose entirely new parameters or architectural changes
+- **Multi-objective optimization** — optimize for speed + quality, not just val_bpb
+- **Linux/macOS support** — remove hardcoded `.exe` paths in runner scripts
+- **More benchmarks** — fine-tuning, RLHF, vision models
+- **Smarter paper selection** — V4's tiered pipeline (Scholar + arXiv + relevance scoring) needs testing and tuning
+
+PRs welcome. If you try it on your own training setup, open an issue — we'd love to hear what works.
+
 ## Based on
 
 - [karpathy/autoresearch](https://github.com/karpathy/autoresearch) — the original autonomous research framework
