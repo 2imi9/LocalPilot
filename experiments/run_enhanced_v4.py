@@ -671,11 +671,13 @@ def orchestrator_plan_search(hp_lines, results_history, tried_descs, best_bpb):
 Current best val_bpb: {best_bpb:.4f} (lower is better). Starting was 1.379.
 GPU: NVIDIA RTX 5090, 24 GB VRAM. Training budget: 5 min/experiment.
 
-Current hyperparameters in train.py:
+<hyperparameters>
 {hp_numbered}
+</hyperparameters>
 
-Experiment history (most recent last):
+<history>
 {history}
+</history>
 
 Your task: Decide what research direction to explore NEXT on arXiv/Scholar.
 - Look at what has been tried and what worked (KEEP) vs failed (DISCARD/CRASH)
@@ -683,12 +685,22 @@ Your task: Decide what research direction to explore NEXT on arXiv/Scholar.
 - Focus on optimizer settings, learning rates, schedules, and architecture ratios
 - We can only change existing hyperparameters (no new code, no new layers)
 
+<examples>
+SEARCH: optimal learning rate warmup schedule small transformer pretraining
+WHY: We haven't explored warmup ratio yet and papers suggest 1-5% warmup helps convergence
+
+SEARCH: Adam beta2 0.95 vs 0.999 language model training stability
+WHY: Lower beta2 showed promise in recent experiments, need evidence for optimal value
+</examples>
+
 Output EXACTLY two lines:
 SEARCH: <a Semantic Scholar search query, 5-15 words, specific to the technique>
 WHY: <one sentence explaining the reasoning>"""
 
     response = call_llm(prompt, max_tokens=200, temperature=0.7, stop=["\n\n\n"])
-    m = re.search(r"SEARCH:\s*(.+)", response)
+    # Strip thinking tags if present
+    cleaned = _strip_thinking(response)
+    m = re.search(r"SEARCH:\s*(.+)", cleaned)
     if m:
         query = m.group(1).strip()
         print(f"  [Search query: {query}]")
@@ -930,11 +942,64 @@ def validate_proposal(param_name, proposed_value, results_history, tried_descs,
 # Stage 4: Orchestrator proposes PARAM + VALUE (V4: open values)
 # ---------------------------------------------------------------------------
 
+def _strip_thinking(response):
+    """Strip Qwen's <think>...</think> wrapper from response.
+    When enable_thinking=True, Qwen wraps reasoning in think tags.
+    The actual answer is after the closing tag.
+    """
+    # Remove all <think>...</think> blocks (may span multiple lines)
+    cleaned = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL).strip()
+    return cleaned if cleaned else response
+
+
+def _parse_proposal(response):
+    """Parse PARAM/VALUE/REASON from LLM response with multiple fallback strategies.
+
+    Adapted from Claude Code's structured output validation — try strict format
+    first, then progressively looser patterns to maximize extraction rate.
+    Returns (param_name, raw_value, reason) or (None, None, None).
+    """
+    # Strip thinking tags first
+    text = _strip_thinking(response)
+
+    # Strategy 1: Exact format — PARAM: X / VALUE: Y / REASON: Z
+    param_m = re.search(r"PARAM:\s*(\w+)", text)
+    value_m = re.search(r"VALUE:\s*(.+)", text)
+    reason_m = re.search(r"REASON:\s*(.+)", text)
+    if param_m and value_m:
+        return (param_m.group(1).strip(),
+                value_m.group(1).strip(),
+                reason_m.group(1).strip() if reason_m else "no reason given")
+
+    # Strategy 2: Markdown-style — **PARAM**: X or `PARAM`: X
+    param_m = re.search(r"\*?\*?PARAM\*?\*?:\s*`?(\w+)`?", text)
+    value_m = re.search(r"\*?\*?VALUE\*?\*?:\s*`?(.+?)`?\s*$", text, re.M)
+    if param_m and value_m:
+        reason_m = re.search(r"\*?\*?REASON\*?\*?:\s*(.+)", text)
+        return (param_m.group(1).strip(),
+                value_m.group(1).strip(),
+                reason_m.group(1).strip() if reason_m else "no reason given")
+
+    # Strategy 3: Line-by-line — look for any line with "param_name = value" pattern
+    # This catches cases where the LLM outputs the actual Python assignment
+    for line in text.splitlines():
+        m = re.match(r"(\w+)\s*=\s*(.+)", line.strip())
+        if m and m.group(1) in ALL_PARAM_NAMES:
+            return (m.group(1), m.group(2).strip(), "inferred from direct assignment")
+
+    return (None, None, None)
+
+
 def orchestrator_propose(hp_lines, paper_ideas, results_history,
                          tried_descs, best_bpb, n=PATCHES_PER_SESSION):
     """
     Qwen3.5-9B reviews findings + history, proposes PARAM + exact VALUE.
     Values are clamped to safe bounds after proposal.
+
+    Prompt design adapted from Claude Code's structured output patterns:
+    - Few-shot examples showing exact expected format
+    - XML-style section markers for clear context boundaries
+    - Explicit constraint listing to reduce hallucinated params
     """
     start_llama_server(QWEN_MODEL, ctx_size=8192, label="Qwen3.5-9B orchestrator",
                        enable_thinking=True)
@@ -955,6 +1020,7 @@ def orchestrator_propose(hp_lines, paper_ideas, results_history,
 
     proposals = []
     hp_dict = get_current_hp_dict(hp_lines)
+    rejection_counts = {}  # track why proposals fail for diagnostics
 
     for attempt in range(n * 3):
         if len(proposals) >= n:
@@ -966,56 +1032,83 @@ def orchestrator_propose(hp_lines, paper_ideas, results_history,
         if not available:
             available = [p for p in ALL_PARAM_NAMES if p not in batch_params]
 
-        avail_str = "\n".join(f"  - {name}" for name in available)
+        avail_str = ", ".join(available)
 
         prompt = f"""You are an ML research orchestrator tuning a GPT language model.
+
+<context>
 Current best val_bpb: {best_bpb:.4f} (lower is better). Starting was 1.379.
-
 GPU: NVIDIA RTX 5090, 24 GB VRAM. Training budget: 5 min/experiment.
-This is a small GPT (~124M params). Focus on optimizer, LR, and schedule tuning.
+Model: small GPT (~124M params, 8 layers, 512 embed dim).
+</context>
 
-Current hyperparameters:
+<hyperparameters>
 {hp_numbered}
+</hyperparameters>
 
+<history>
 {param_summary}
+</history>
 
+<bounds>
 {bounds_desc}
+</bounds>
 
-Parameters you can choose from (others are on cooldown):
+<available_params>
 {avail_str}
+</available_params>
 
-Research findings:
-{paper_ideas[:2000]}
+<research>
+{paper_ideas[:2000] if paper_ideas else "No research findings available. Use your knowledge of transformer training best practices."}
+</research>
 
-Pick ONE parameter and propose an EXACT new value.
-- You can set ANY value within the bounds (not just +/- steps)
-- If research suggests a specific value, propose it directly
+Pick ONE parameter from <available_params> and propose an EXACT new value within <bounds>.
+Rules:
+- Pick from <available_params> ONLY (others are on cooldown)
+- Set ANY value within bounds (not just small steps)
 - Prefer UNEXPLORED parameters
-- For ADAM_BETAS, format as (beta1, beta2)
+- For ADAM_BETAS use format (beta1, beta2)
+- For WINDOW_PATTERN use quotes like "SSSL"
 
-Output EXACTLY 3 lines:
-PARAM: <parameter name from the list above>
-VALUE: <the exact new value>
-REASON: <one sentence citing research or experimental evidence>
-"""
+<examples>
+Example 1:
+PARAM: WEIGHT_DECAY
+VALUE: 0.15
+REASON: Research shows higher weight decay (0.1-0.2) improves generalization for small transformers
+
+Example 2:
+PARAM: ADAM_BETAS
+VALUE: (0.9, 0.95)
+REASON: Lower beta2 can help with training stability in small models per Wortsman et al.
+
+Example 3:
+PARAM: DEPTH
+VALUE: 12
+REASON: Deeper networks with same param count often achieve lower loss per Kaplan scaling laws
+</examples>
+
+Output EXACTLY 3 lines (no other text):
+PARAM: <parameter name>
+VALUE: <exact value>
+REASON: <one sentence>"""
 
         try:
-            response = call_llm(prompt, max_tokens=200, temperature=0.9,
+            response = call_llm(prompt, max_tokens=300, temperature=0.7,
                                 stop=["\n\n\n"])
-            param_m = re.search(r"PARAM:\s*(\w+)", response)
-            value_m = re.search(r"VALUE:\s*(.+)", response)
-            reason_m = re.search(r"REASON:\s*(.+)", response)
+            param_name, raw_value, reason = _parse_proposal(response)
 
-            if not all([param_m, value_m]):
+            if param_name is None:
+                rejection_counts["parse_fail"] = rejection_counts.get("parse_fail", 0) + 1
+                print(f"    [attempt {attempt+1}: parse fail — "
+                      f"response: {_strip_thinking(response)[:80]}]")
                 continue
-
-            param_name = param_m.group(1).strip()
-            raw_value = value_m.group(1).strip()
-            reason = reason_m.group(1).strip() if reason_m else "no reason given"
 
             if param_name not in available:
+                rejection_counts["not_available"] = rejection_counts.get("not_available", 0) + 1
+                print(f"    [attempt {attempt+1}: {param_name} not in available params]")
                 continue
             if param_name in batch_params:
+                rejection_counts["already_in_batch"] = rejection_counts.get("already_in_batch", 0) + 1
                 continue
 
             # Clamp to safe bounds
@@ -1024,32 +1117,40 @@ REASON: <one sentence citing research or experimental evidence>
             # Produce edit
             edit = make_edit(param_name, safe_value, hp_lines)
             if edit is None:
+                rejection_counts["no_edit"] = rejection_counts.get("no_edit", 0) + 1
+                print(f"    [attempt {attempt+1}: {param_name}={safe_value} "
+                      f"same as current or not found in train.py]")
                 continue
 
             # OOM pre-flight check
             test_hp = dict(hp_dict)
             test_hp[param_name] = safe_value
             if would_oom(test_hp):
+                rejection_counts["oom"] = rejection_counts.get("oom", 0) + 1
                 print(f"    [BLOCKED OOM: {param_name}={safe_value}]")
                 continue
 
             edit["reason"] = reason
 
             # --- Post-proposal validation (adapted from Claude Code stop hooks) ---
-            # Before accepting, do a quick sanity check: is this change
-            # contradicted by our own experiment history?
             rejection = validate_proposal(param_name, safe_value, results_history,
                                           tried_descs, best_bpb)
             if rejection:
+                rejection_counts["validation"] = rejection_counts.get("validation", 0) + 1
                 print(f"    [REJECTED: {param_name}={safe_value} — {rejection}]")
                 continue
 
             proposals.append(edit)
-            print(f"    proposal {len(proposals)}: {edit['desc']} | {reason[:50]}")
+            print(f"    proposal {len(proposals)}: {edit['desc']} | {reason[:60]}")
 
         except Exception as e:
+            rejection_counts["error"] = rejection_counts.get("error", 0) + 1
             print(f"    [orchestrator propose error: {e}]")
             time.sleep(1)
+
+    # Diagnostic summary
+    if rejection_counts:
+        print(f"    [Proposal diagnostics: {rejection_counts}]")
 
     return proposals
 

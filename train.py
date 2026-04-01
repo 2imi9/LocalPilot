@@ -21,7 +21,36 @@ try:
     from kernels import get_kernel
     fa3 = get_kernel('varunneal/flash-attention-3').flash_attn_interface
 except (ImportError, FileNotFoundError, OSError):
-    fa3 = None  # fallback to PyTorch SDPA (uses more VRAM)
+    fa3 = None
+
+# FlexAttention (PyTorch 2.5+): efficient sliding window + GQA on any GPU
+try:
+    from torch.nn.attention.flex_attention import flex_attention, create_block_mask
+    _flex_attention = torch.compile(flex_attention)
+    _block_mask_cache = {}  # (window_size, seq_len) -> BlockMask
+
+    def _get_block_mask(window_size, seq_len, device):
+        """Get or create a cached BlockMask for the given window size."""
+        key = (window_size, seq_len, device)
+        if key not in _block_mask_cache:
+            if window_size <= 0 or window_size >= seq_len:
+                # Full causal attention
+                def causal_mask(b, h, q_idx, kv_idx):
+                    return q_idx >= kv_idx
+                _block_mask_cache[key] = create_block_mask(
+                    causal_mask, B=None, H=None, Q_LEN=seq_len, KV_LEN=seq_len, device=device)
+            else:
+                # Sliding window causal attention
+                _ws = window_size  # capture for closure
+                def sliding_window_causal(b, h, q_idx, kv_idx):
+                    return (q_idx >= kv_idx) & (q_idx - kv_idx < _ws)
+                _block_mask_cache[key] = create_block_mask(
+                    sliding_window_causal, B=None, H=None, Q_LEN=seq_len, KV_LEN=seq_len, device=device)
+        return _block_mask_cache[key]
+
+    has_flex_attention = True
+except ImportError:
+    has_flex_attention = False
 
 from localpilot.constants import MAX_SEQ_LEN, TIME_BUDGET
 from prepare import Tokenizer, make_dataloader, evaluate_bpb
@@ -93,16 +122,27 @@ class CausalSelfAttention(nn.Module):
 
         if fa3 is not None:
             y = fa3.flash_attn_func(q, k, v, causal=True, window_size=window_size)
-        else:
-            # Fallback: PyTorch SDPA (no sliding window, full causal attention)
+        elif has_flex_attention:
+            # FlexAttention: efficient sliding window + GQA on any GPU (PyTorch 2.5+)
             q = q.transpose(1, 2)  # (B, n_head, T, head_dim)
+            k = k.transpose(1, 2)
+            v = v.transpose(1, 2)
+            ws = window_size[0] if isinstance(window_size, tuple) else window_size
+            block_mask = _get_block_mask(ws, T, q.device)
+            use_gqa = k.size(1) != q.size(1)
+            y = _flex_attention(q, k, v, block_mask=block_mask,
+                                enable_gqa=use_gqa)
+            y = y.transpose(1, 2)  # (B, T, n_head, head_dim)
+        else:
+            # Last resort: PyTorch SDPA (no sliding window, full causal attention)
+            q = q.transpose(1, 2)
             k = k.transpose(1, 2)
             v = v.transpose(1, 2)
             if k.size(1) != q.size(1):
                 k = k.repeat_interleave(q.size(1) // k.size(1), dim=1)
                 v = v.repeat_interleave(q.size(1) // v.size(1), dim=1)
             y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
-            y = y.transpose(1, 2)  # (B, T, n_head, head_dim)
+            y = y.transpose(1, 2)
         y = y.contiguous().view(B, T, -1)
         y = self.c_proj(y)
         return y
@@ -460,7 +500,7 @@ FINAL_LR_FRAC = 0.0     # final LR as fraction of initial
 
 # Model size
 DEPTH = 8               # number of transformer layers
-DEVICE_BATCH_SIZE = 64 if fa3 is None else 128  # halved for SDPA (O(n^2) vs O(n) memory)
+DEVICE_BATCH_SIZE = 128 if fa3 is not None else 64  # FlexAttention/SDPA: 64 (grad_accum=2 for 2^18 batch)
 
 # ---------------------------------------------------------------------------
 # Setup: tokenizer, model, optimizer, dataloader
