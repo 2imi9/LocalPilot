@@ -201,15 +201,15 @@ Qwen3.5-9B orchestrates the loop — it decides what to search, MolmoWeb-4B brow
 
 **Why visual browsing matters:** API-only approaches see titles and abstracts. MolmoWeb sees the actual paper — training curves, architecture diagrams, ablation tables. It can tell the difference between a paper that *mentions* learning rate scheduling and one that *demonstrates* a specific schedule that works for shallow transformers.
 
-### V4 (WIP): tiered pipeline
+### V4 (WIP): tiered pipeline + agent-grade resilience
 
-V4 adds Semantic Scholar + arXiv API search with relevance scoring, so only the most relevant papers get expensive visual browsing:
+V4 adds Semantic Scholar + arXiv API search with batch relevance scoring, plus agent design patterns adapted from [Claude Code](https://docs.anthropic.com/en/docs/claude-code):
 
 ```
   Semantic Scholar + arXiv API          Fast, free, ~50 papers/query
          │
          ▼
-  Qwen relevance scoring (0-10)        ~1 second per paper
+  Qwen batch scoring (0-10)            One LLM call scores ALL papers
          │
     ┌────┼────┐
     ▼    ▼    ▼
@@ -219,7 +219,20 @@ V4 adds Semantic Scholar + arXiv API search with relevance scoring, so only the 
                    ▼
               MolmoWeb-4B               Takes screenshots, clicks through
                                         figures/tables, extracts techniques
+         │
+         ▼
+  Qwen proposals (thinking mode)       /think enabled for high-quality reasoning
+         │
+         ▼
+  Validation → OOM check → Train       Stop hooks catch bad proposals early
 ```
+
+**Patterns borrowed from Claude Code's agent framework:**
+- **Batch scoring** — all papers scored in one LLM call instead of N sequential calls (~60s faster)
+- **History compaction** — old experiments summarized into a structured digest (keeps, failure patterns, parameter coverage) so the LLM gets actionable context, not a raw log
+- **Adaptive thinking** — Qwen3.5's native `/think` mode enabled for proposal generation (the highest-stakes decision), disabled for fast scoring/planning
+- **Post-proposal validation** — stop hooks reject duplicates, recently-exhausted parameters, and OOM configs before wasting a training run
+- **Structured error recovery** — exponential backoff with jitter, error categorization (retryable vs terminal), and a circuit breaker that falls back to random proposals after 3 consecutive research failures
 
 This solves the rate-limiting problem — raw MolmoWeb browsing triggered CDN bans (~1500 HTTP requests per session). Tiered research cuts web requests by ~90%.
 

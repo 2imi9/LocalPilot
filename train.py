@@ -17,8 +17,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from kernels import get_kernel
-fa3 = get_kernel('varunneal/flash-attention-3').flash_attn_interface
+try:
+    from kernels import get_kernel
+    fa3 = get_kernel('varunneal/flash-attention-3').flash_attn_interface
+except (ImportError, FileNotFoundError, OSError):
+    fa3 = None  # fallback to PyTorch SDPA (uses more VRAM)
 
 from localpilot.constants import MAX_SEQ_LEN, TIME_BUDGET
 from prepare import Tokenizer, make_dataloader, evaluate_bpb
@@ -88,7 +91,18 @@ class CausalSelfAttention(nn.Module):
         q, k = apply_rotary_emb(q, cos, sin), apply_rotary_emb(k, cos, sin)
         q, k = norm(q), norm(k)
 
-        y = fa3.flash_attn_func(q, k, v, causal=True, window_size=window_size)
+        if fa3 is not None:
+            y = fa3.flash_attn_func(q, k, v, causal=True, window_size=window_size)
+        else:
+            # Fallback: PyTorch SDPA (no sliding window, full causal attention)
+            q = q.transpose(1, 2)  # (B, n_head, T, head_dim)
+            k = k.transpose(1, 2)
+            v = v.transpose(1, 2)
+            if k.size(1) != q.size(1):
+                k = k.repeat_interleave(q.size(1) // k.size(1), dim=1)
+                v = v.repeat_interleave(q.size(1) // v.size(1), dim=1)
+            y = F.scaled_dot_product_attention(q, k, v, is_causal=True)
+            y = y.transpose(1, 2)  # (B, T, n_head, head_dim)
         y = y.contiguous().view(B, T, -1)
         y = self.c_proj(y)
         return y
@@ -446,7 +460,7 @@ FINAL_LR_FRAC = 0.0     # final LR as fraction of initial
 
 # Model size
 DEPTH = 8               # number of transformer layers
-DEVICE_BATCH_SIZE = 128  # per-device batch size (reduce if OOM)
+DEVICE_BATCH_SIZE = 64 if fa3 is None else 128  # halved for SDPA (O(n^2) vs O(n) memory)
 
 # ---------------------------------------------------------------------------
 # Setup: tokenizer, model, optimizer, dataloader
