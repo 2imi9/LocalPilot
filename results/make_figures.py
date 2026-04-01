@@ -26,7 +26,8 @@ matplotlib.rcParams.update({
     "savefig.dpi": 300,
 })
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
+RESULTS = ROOT / "results"
 FIGURES = ROOT / "figures"
 FIGURES.mkdir(exist_ok=True)
 
@@ -41,7 +42,7 @@ C_DISC = "#D65F5F"   # red    -- discarded
 
 def load(name):
     """Load a results TSV and compute running best for every row."""
-    path = ROOT / f"results_{name}.tsv"
+    path = RESULTS / f"results_{name}.tsv"
     rows = []
     with open(path, encoding="utf-8") as f:
         for r in csv.DictReader(f, delimiter="\t"):

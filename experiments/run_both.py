@@ -11,7 +11,7 @@ import sys
 import time
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path(__file__).resolve().parent.parent
 PYTHON = str(ROOT / ".venv" / "Scripts" / "python.exe")
 CLEAN_COMMIT = "9682daa"  # clean karpathy baseline commit
 
@@ -89,7 +89,7 @@ def main():
     # Quick results summary
     for label, tsv in [("Enhanced v3", "results_enhanced_v3.tsv"),
                        ("Baseline", "results_baseline_v2.tsv")]:
-        p = ROOT / tsv
+        p = ROOT / "results" / tsv
         if p.exists():
             lines = p.read_text().strip().splitlines()
             n = len(lines) - 1  # minus header
@@ -104,7 +104,7 @@ def main():
                         best = val
             print(f"\n  {label}: {n} experiments, {keeps} keeps, best={best:.6f}")
 
-    print("\nDone! Results in results_enhanced_v3.tsv and results_baseline_v2.tsv")
+    print("\nDone! Results in results/results_enhanced_v3.tsv and results/results_baseline_v2.tsv")
 
 
 if __name__ == "__main__":

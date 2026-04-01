@@ -72,8 +72,8 @@ TRAIN_CMD = [
     DOCKER_IMAGE,
     "uv", "run", "python", "train.py",
 ]
-RESULTS_FILE = ROOT / "results_enhanced_v4.tsv"
-PROPOSALS_LOG = ROOT / "proposals_enhanced_v4.jsonl"
+RESULTS_FILE = ROOT / "results" / "results_enhanced_v4.tsv"
+PROPOSALS_LOG = ROOT / "results" / "proposals_enhanced_v4.jsonl"
 RESEARCH_LOG = ROOT / "research_log_v4.md"
 QUEUE_FILE   = ROOT / "patch_queue_v4.json"
 

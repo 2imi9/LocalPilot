@@ -20,7 +20,7 @@ import torch.nn.functional as F
 from kernels import get_kernel
 fa3 = get_kernel('varunneal/flash-attention-3').flash_attn_interface
 
-from constants import MAX_SEQ_LEN, TIME_BUDGET
+from localpilot.constants import MAX_SEQ_LEN, TIME_BUDGET
 from prepare import Tokenizer, make_dataloader, evaluate_bpb
 
 # ---------------------------------------------------------------------------

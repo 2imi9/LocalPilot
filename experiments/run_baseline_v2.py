@@ -36,8 +36,8 @@ os.chdir(ROOT)
 
 PYTHON       = str(ROOT / ".venv" / "Scripts" / "python.exe")
 TRAIN_CMD    = [PYTHON, "train.py"]
-RESULTS_FILE = ROOT / "results_baseline_v2.tsv"
-PROPOSALS_LOG = ROOT / "proposals_baseline_v2.jsonl"
+RESULTS_FILE = ROOT / "results" / "results_baseline_v2.tsv"
+PROPOSALS_LOG = ROOT / "results" / "proposals_baseline_v2.jsonl"
 
 # Stopping criteria
 CONSEC_DISCARD_LIMIT = 15   # stop after this many consecutive discards

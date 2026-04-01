@@ -42,8 +42,8 @@ os.chdir(ROOT)
 
 PYTHON       = str(ROOT / ".venv" / "Scripts" / "python.exe")
 TRAIN_CMD    = [PYTHON, "train.py"]
-RESULTS_FILE = ROOT / "results_enhanced_v3.tsv"
-PROPOSALS_LOG = ROOT / "proposals_enhanced_v3.jsonl"
+RESULTS_FILE = ROOT / "results" / "results_enhanced_v3.tsv"
+PROPOSALS_LOG = ROOT / "results" / "proposals_enhanced_v3.jsonl"
 RESEARCH_LOG = ROOT / "research_log_v3.md"
 QUEUE_FILE   = ROOT / "patch_queue_v3.json"
 

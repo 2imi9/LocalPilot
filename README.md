@@ -239,22 +239,29 @@ The LLM reads papers relevant to **your** task and proposes changes specific to 
 autoresearch/
 ├── train.py                  # The file the agent edits
 ├── prepare.py                # One-time data prep
-├── constants.py              # HP bounds and parameter definitions
-├── make_figures.py           # Generates all figures from result data
-├── Dockerfile                # CUDA 13.0 + FA3 training image
+├── localpilot.yaml           # Model selection config
+├── Dockerfile                # CUDA 13.0 + FA3 training image (optional)
 │
 ├── experiments/
 │   ├── run_baseline_v2.py    # Random perturbation (Condition A)
 │   ├── run_enhanced_v3.py    # Paper-grounded search (Condition B)
-│   └── run_enhanced_v4.py    # V4 (WIP): open values + OOM pre-flight
+│   ├── run_enhanced_v4.py    # V4 (WIP): open values + OOM pre-flight
+│   └── run_both.py           # Run both conditions back-to-back
 │
 ├── localpilot/
 │   ├── browse.py             # MolmoWeb visual web agent
 │   ├── config.py             # Hardware-aware model selection
+│   ├── constants.py          # HP bounds and parameter definitions
 │   └── analyze.py            # Result analysis + figures
 │
-├── results_baseline_v2.tsv   # Full baseline experiment log (45 experiments)
-├── results_enhanced_v3.tsv   # Full enhanced experiment log (64 experiments)
+├── results/
+│   ├── results_baseline_v2.tsv    # Baseline experiment log (45 experiments)
+│   ├── results_enhanced_v3.tsv    # Enhanced experiment log (64 experiments)
+│   ├── proposals_baseline_v2.jsonl
+│   ├── proposals_enhanced_v3.jsonl
+│   ├── make_figures.py            # Generates all figures from result data
+│   └── analysis.ipynb             # Exploratory analysis notebook
+│
 ├── figures/                  # Publication figures
 └── tests/                    # Unit + integration tests
 ```

@@ -19,9 +19,9 @@ patch_queue*.json
 screenshots/
 
 # Incomplete/test results (real results are tracked)
-results_enhanced_v2.tsv
-results_enhanced_v4.tsv
-proposals_enhanced_v4.jsonl
+results/results_enhanced_v2.tsv
+results/results_enhanced_v4.tsv
+results/proposals_enhanced_v4.jsonl
 research_log_v4.md
 
 # Private / large
