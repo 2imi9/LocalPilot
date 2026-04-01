@@ -19,8 +19,11 @@ import torch.nn.functional as F
 
 try:
     from kernels import get_kernel
-    fa3 = get_kernel('varunneal/flash-attention-3').flash_attn_interface
-except (ImportError, FileNotFoundError, OSError):
+    cap = torch.cuda.get_device_capability()
+    # varunneal's FA3 is Hopper only, use kernels-community on non-Hopper GPUs
+    repo = "varunneal/flash-attention-3" if cap == (9, 0) else "kernels-community/flash-attn3"
+    fa3 = get_kernel(repo).flash_attn_interface
+except Exception:
     fa3 = None
 
 # FlexAttention (PyTorch 2.5+): efficient sliding window + GQA on any GPU
