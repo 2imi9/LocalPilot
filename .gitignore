@@ -35,5 +35,6 @@ models/
 # Temp
 *.tmp
 *.lock
+!uv.lock
 worktrees/
 dev/
