@@ -40,8 +40,12 @@ import requests
 ROOT = Path(__file__).resolve().parent.parent
 os.chdir(ROOT)
 
-PYTHON       = str(ROOT / ".venv" / "Scripts" / "python.exe")
-TRAIN_CMD    = [PYTHON, "train.py"]
+if os.environ.get("AUTORESEARCH_DOCKER") == "1":
+    PYTHON = "python"
+    TRAIN_CMD = ["python", "train.py"]
+else:
+    PYTHON       = str(ROOT / ".venv" / "Scripts" / "python.exe")
+    TRAIN_CMD    = [PYTHON, "train.py"]
 RESULTS_FILE = ROOT / "results" / "results_enhanced_v3.tsv"
 PROPOSALS_LOG = ROOT / "results" / "proposals_enhanced_v3.jsonl"
 RESEARCH_LOG = ROOT / "research_log_v3.md"
