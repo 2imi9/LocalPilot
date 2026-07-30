@@ -27,9 +27,9 @@ LocalPilot is different: it has a **visual web browsing agent** ([MolmoWeb-4B](h
   You run it                                   It does this, autonomously
   ─────────                                    ──────────────────────────
   uv run python experiments/run_enhanced_v3.py ─>  1. Reads train.py + past results
-                                                 2. Qwen3.5-9B plans what to search
+  (or run_enhanced_v4.py for V4 WIP)             2. Qwen3.5-9B plans what to search
                                                  3. MolmoWeb-4B browses arXiv visually
-                                                 4. Devstral-24B proposes a HP change, citing why
+                                                 4. Proposes a HP change, citing why
                                                  5. Edits train.py, trains locally
                                                  6. Keeps if val_bpb improves, reverts if not
                                                  7. Loops — gets smarter each iteration
@@ -37,7 +37,7 @@ LocalPilot is different: it has a **visual web browsing agent** ([MolmoWeb-4B](h
 
 The key innovation is **step 3**: MolmoWeb-4B is a visual web agent that takes screenshots of web pages and interacts with them like a human would. It navigates to arXiv papers, scrolls through figures and tables, and extracts specific techniques — not just keyword matches from abstracts.
 
-All models run locally (Qwen3.5-9B for orchestration, MolmoWeb-4B for browsing, Devstral-24B for code). No API keys, no cloud bills.
+All models run locally (Qwen3.5-9B for orchestration, MolmoWeb-4B for browsing). No API keys, no cloud bills.
 
 ## Results
 
@@ -158,19 +158,22 @@ The runner scripts expect a local `.venv` created by `uv`. If `uv sync` (Step 1)
 python -c "import sys; print(sys.executable)"
 ```
 
-> **Optional:** A Dockerfile is included for running training inside a Linux container (useful for Flash Attention 3 which requires Linux CUDA). Build with `docker build -t autoresearch-train .` if needed.
+> **Optional:** A Dockerfile is included for running training inside a Linux container (CUDA 13.0, useful for Flash Attention 3 on Hopper GPUs). Build with `docker build -t autoresearch-train .` if needed. Note: FA3 is Hopper-only (SM 9.0); Blackwell GPUs use FlexAttention until FA4 stabilizes.
 
 ### Step 6: Run it
 
 ```bash
-# Run the autonomous research agent (reads papers, proposes experiments)
+# V3 (stable) — paper-grounded search with visual browsing
 uv run python experiments/run_enhanced_v3.py
 
-# Or run the random baseline for comparison (no LLMs needed)
+# V4 (WIP) — tiered pipeline with agent-grade resilience
+uv run python experiments/run_enhanced_v4.py
+
+# Random baseline for comparison (no LLMs needed)
 uv run python experiments/run_baseline_v2.py
 ```
 
-The enhanced runner will pre-flight check that all models exist and print download commands if anything is missing.
+The enhanced runners will pre-flight check that all models exist and print download commands if anything is missing.
 
 ### Troubleshooting
 
@@ -184,7 +187,9 @@ The enhanced runner will pre-flight check that all models exist and print downlo
 
 ## How the research pipeline works
 
-### V3 (current)
+### V3 (stable — best validated result: 1.1507 BPB)
+
+V3 is the stable, validated pipeline. It achieved **1.1507 val_bpb** in 64 experiments using SDPA attention (cuDNN backend) with batch_size=32.
 
 Qwen3.5-9B orchestrates the loop — it decides what to search, MolmoWeb-4B browses arXiv visually, and Devstral-24B writes the code patch:
 
@@ -235,6 +240,17 @@ V4 adds Semantic Scholar + arXiv API search with batch relevance scoring, plus a
 - **Structured error recovery** — exponential backoff with jitter, error categorization (retryable vs terminal), and a circuit breaker that falls back to random proposals after 3 consecutive research failures
 
 This solves the rate-limiting problem — raw MolmoWeb browsing triggered CDN bans (~1500 HTTP requests per session). Tiered research cuts web requests by ~90%.
+
+### Attention backend status
+
+| Backend | GPU | Status |
+|---|---|---|
+| **SDPA (cuDNN)** | All NVIDIA | Working — V3 baseline (1.1507 BPB) |
+| **FlexAttention** | SM 8.0+ (PyTorch 2.5+) | Working — sliding window + GQA via compiled BlockMask |
+| **Flash Attention 3** | Hopper (SM 9.0) only | Working via `kernels` — not available on Blackwell |
+| **Flash Attention 4** | Blackwell (SM 12.0) | Beta (`flash-attn-4==4.0.0b7`) — JIT compilation crashes, waiting for stable release |
+
+`train.py` uses a 3-tier fallback: FA3 → FlexAttention → SDPA. On Blackwell GPUs, FlexAttention is the current best path until FA4 stabilizes.
 
 ## Adapting to your own project
 

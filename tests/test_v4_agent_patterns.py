@@ -215,6 +215,44 @@ def _categorize_error(error):
     return "unknown"
 
 
+# --- _strip_thinking + _parse_proposal (copied from v4) ---
+def _strip_thinking(response):
+    """Strip Qwen's <think>...</think> wrapper from response."""
+    cleaned = re.sub(r'<think>.*?</think>', '', response, flags=re.DOTALL).strip()
+    return cleaned if cleaned else response
+
+
+def _parse_proposal(response):
+    """Parse PARAM/VALUE/REASON from LLM response with multiple fallback strategies."""
+    text = _strip_thinking(response)
+
+    # Strategy 1: Exact format
+    param_m = re.search(r"PARAM:\s*(\w+)", text)
+    value_m = re.search(r"VALUE:\s*(.+)", text)
+    reason_m = re.search(r"REASON:\s*(.+)", text)
+    if param_m and value_m:
+        return (param_m.group(1).strip(),
+                value_m.group(1).strip(),
+                reason_m.group(1).strip() if reason_m else "no reason given")
+
+    # Strategy 2: Markdown-style
+    param_m = re.search(r"\*?\*?PARAM\*?\*?:\s*`?(\w+)`?", text)
+    value_m = re.search(r"\*?\*?VALUE\*?\*?:\s*`?(.+?)`?\s*$", text, re.M)
+    if param_m and value_m:
+        reason_m = re.search(r"\*?\*?REASON\*?\*?:\s*(.+)", text)
+        return (param_m.group(1).strip(),
+                value_m.group(1).strip(),
+                reason_m.group(1).strip() if reason_m else "no reason given")
+
+    # Strategy 3: Direct assignment
+    for line in text.splitlines():
+        m = re.match(r"(\w+)\s*=\s*(.+)", line.strip())
+        if m and m.group(1) in ALL_PARAM_NAMES:
+            return (m.group(1), m.group(2).strip(), "inferred from direct assignment")
+
+    return (None, None, None)
+
+
 # --- should_stop (copied from v4) ---
 CONSEC_DISCARD_LIMIT = 15
 NO_KEEP_WINDOW = 20
@@ -906,6 +944,139 @@ def test_full_pipeline_reject_duplicate():
     assert "duplicate" in rejection
 
 
+# ---------------------------------------------------------------------------
+# 10. _strip_thinking tests
+# ---------------------------------------------------------------------------
+
+def test_strip_thinking_basic():
+    """Strip simple think tags."""
+    response = "<think>Let me analyze this carefully...</think>\nPARAM: DEPTH\nVALUE: 6"
+    assert _strip_thinking(response) == "PARAM: DEPTH\nVALUE: 6"
+
+
+def test_strip_thinking_multiline():
+    """Strip multiline think tags."""
+    response = "<think>\nI need to consider\nmultiple factors\nhere\n</think>\nPARAM: WEIGHT_DECAY\nVALUE: 0.15"
+    cleaned = _strip_thinking(response)
+    assert "<think>" not in cleaned
+    assert "PARAM: WEIGHT_DECAY" in cleaned
+
+
+def test_strip_thinking_no_tags():
+    """Pass through response without think tags."""
+    response = "PARAM: DEPTH\nVALUE: 6\nREASON: deeper model"
+    assert _strip_thinking(response) == response
+
+
+def test_strip_thinking_empty_content():
+    """When thinking is the entire response, return original."""
+    response = "<think>only thinking here</think>"
+    assert _strip_thinking(response) == response  # returns original when cleaned is empty? No, cleaned is empty, so returns response
+
+
+def test_strip_thinking_multiple_blocks():
+    """Strip multiple think blocks."""
+    response = "<think>first thought</think>PARAM: DEPTH\n<think>second thought</think>VALUE: 8"
+    cleaned = _strip_thinking(response)
+    assert "<think>" not in cleaned
+    assert "PARAM: DEPTH" in cleaned
+    assert "VALUE: 8" in cleaned
+
+
+# ---------------------------------------------------------------------------
+# 11. _parse_proposal tests
+# ---------------------------------------------------------------------------
+
+def test_parse_exact_format():
+    """Parse standard PARAM/VALUE/REASON format."""
+    response = "PARAM: WEIGHT_DECAY\nVALUE: 0.15\nREASON: higher weight decay helps"
+    param, value, reason = _parse_proposal(response)
+    assert param == "WEIGHT_DECAY"
+    assert value == "0.15"
+    assert "higher weight decay" in reason
+
+
+def test_parse_with_thinking():
+    """Parse format wrapped in thinking tags."""
+    response = "<think>Let me think about this...\nI should try weight decay.\n</think>\nPARAM: WEIGHT_DECAY\nVALUE: 0.2\nREASON: regularization"
+    param, value, reason = _parse_proposal(response)
+    assert param == "WEIGHT_DECAY"
+    assert value == "0.2"
+
+
+def test_parse_markdown_format():
+    """Parse markdown-style bold formatting."""
+    response = "**PARAM**: `DEPTH`\n**VALUE**: `8`\n**REASON**: deeper model improves loss"
+    param, value, reason = _parse_proposal(response)
+    assert param == "DEPTH"
+    assert value == "8"
+
+
+def test_parse_direct_assignment():
+    """Parse Python-style assignment as fallback."""
+    response = "I think we should set:\nWEIGHT_DECAY = 0.2"
+    param, value, reason = _parse_proposal(response)
+    assert param == "WEIGHT_DECAY"
+    assert value == "0.2"
+
+
+def test_parse_no_value():
+    """Return None tuple when no parseable format found."""
+    response = "I'm not sure what to suggest."
+    param, value, reason = _parse_proposal(response)
+    assert param is None
+    assert value is None
+    assert reason is None
+
+
+def test_parse_adam_betas():
+    """Parse ADAM_BETAS tuple format."""
+    response = "PARAM: ADAM_BETAS\nVALUE: (0.9, 0.95)\nREASON: lower beta2 for stability"
+    param, value, reason = _parse_proposal(response)
+    assert param == "ADAM_BETAS"
+    assert "(0.9, 0.95)" in value
+
+
+def test_parse_window_pattern():
+    """Parse WINDOW_PATTERN with quotes."""
+    response = 'PARAM: WINDOW_PATTERN\nVALUE: "LLLL"\nREASON: full attention for small model'
+    param, value, reason = _parse_proposal(response)
+    assert param == "WINDOW_PATTERN"
+    assert "LLLL" in value
+
+
+def test_parse_missing_reason():
+    """Parse successfully even without REASON line."""
+    response = "PARAM: DEPTH\nVALUE: 10"
+    param, value, reason = _parse_proposal(response)
+    assert param == "DEPTH"
+    assert value == "10"
+    assert reason == "no reason given"
+
+
+def test_parse_extra_whitespace():
+    """Handle extra whitespace around values."""
+    response = "PARAM:   MATRIX_LR  \nVALUE:   0.06  \nREASON:   midrange learning rate  "
+    param, value, reason = _parse_proposal(response)
+    assert param == "MATRIX_LR"
+    assert value == "0.06"
+
+
+def test_parse_thinking_then_markdown():
+    """Parse thinking + markdown combo (common Qwen output)."""
+    response = "<think>\nThis model is small, so deeper depth might help.\nBut we should also consider width.\n</think>\n**PARAM**: ASPECT_RATIO\n**VALUE**: 80\n**REASON**: wider model trades depth for width"
+    param, value, reason = _parse_proposal(response)
+    assert param == "ASPECT_RATIO"
+    assert value == "80"
+
+
+def test_parse_direct_assignment_not_param():
+    """Direct assignment strategy only matches known params."""
+    response = "I think:\nFOO_BAR = 42\nSOMETHING_ELSE = 99"
+    param, value, reason = _parse_proposal(response)
+    assert param is None  # neither FOO_BAR nor SOMETHING_ELSE is in ALL_PARAM_NAMES
+
+
 # ===========================================================================
 # Run all tests
 # ===========================================================================
@@ -981,6 +1152,26 @@ if __name__ == "__main__":
         # Integration
         ("pipeline: full proposal flow", test_full_proposal_pipeline),
         ("pipeline: reject duplicate", test_full_pipeline_reject_duplicate),
+
+        # Strip thinking
+        ("thinking: basic strip", test_strip_thinking_basic),
+        ("thinking: multiline strip", test_strip_thinking_multiline),
+        ("thinking: no tags passthrough", test_strip_thinking_no_tags),
+        ("thinking: empty content", test_strip_thinking_empty_content),
+        ("thinking: multiple blocks", test_strip_thinking_multiple_blocks),
+
+        # Parse proposal
+        ("parse: exact format", test_parse_exact_format),
+        ("parse: with thinking tags", test_parse_with_thinking),
+        ("parse: markdown format", test_parse_markdown_format),
+        ("parse: direct assignment", test_parse_direct_assignment),
+        ("parse: no value returns None", test_parse_no_value),
+        ("parse: ADAM_BETAS tuple", test_parse_adam_betas),
+        ("parse: WINDOW_PATTERN", test_parse_window_pattern),
+        ("parse: missing reason", test_parse_missing_reason),
+        ("parse: extra whitespace", test_parse_extra_whitespace),
+        ("parse: thinking + markdown", test_parse_thinking_then_markdown),
+        ("parse: direct assignment non-param", test_parse_direct_assignment_not_param),
     ]
 
     for name, fn in tests:
